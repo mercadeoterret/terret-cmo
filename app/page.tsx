@@ -1,10 +1,5 @@
-import Layout from './(dashboard)/layout'
-import Page from './(dashboard)/page'
-
+import DashboardLayout from './(dashboard)/layout'
+import HomePage from './(dashboard)/page'
 export default function Root() {
-  return (
-    <Layout>
-      <Page />
-    </Layout>
-  )
+  return <DashboardLayout><HomePage /></DashboardLayout>
 }

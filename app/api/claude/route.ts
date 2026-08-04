@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
     const { data: brandData } = await supabase.from('brand_knowledge').select('contenido').eq('activo', true)
     const kpis = kpisData || {}
     const brandKnowledge = (brandData || []).map((b: { contenido: string }) => b.contenido)
-    const systemPrompt = buildSystemPrompt(kpis, brandKnowledge)
-    const maxTokens = mode === 'campana' ? 8000 : 2000
-    const stream = await anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: systemPrompt, messages })
+    const system = buildSystemPrompt(kpis, brandKnowledge)
+    const maxTokens = mode === 'campana' ? 4000 : 2000
+    const stream = await anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system, messages })
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
       async start(controller) {
@@ -28,8 +28,8 @@ export async function POST(req: NextRequest) {
       },
     })
     return new Response(readable, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
-  } catch (error) {
-    console.error(error)
+  } catch (e) {
+    console.error(e)
     return Response.json({ error: 'Error Claude API' }, { status: 500 })
   }
 }
