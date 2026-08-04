@@ -15,10 +15,19 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const { data, error } = await sb().from('campanas').insert(body).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  try {
+    const text = await req.text()
+    const body = JSON.parse(text)
+    // Limpiar output_claude para evitar problemas de encoding
+    if (body.output_claude) {
+      body.output_claude = body.output_claude.substring(0, 50000)
+    }
+    const { data, error } = await sb().from('campanas').insert(body).select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest) {
