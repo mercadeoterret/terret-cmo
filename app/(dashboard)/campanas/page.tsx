@@ -731,7 +731,7 @@ export default function CampanasPage() {
                   ✦ Generar todo automáticamente
                 </button>
               )}
-              {!savedId && todasListas && (
+              {!savedId && fasesCompletadas > 0 && (
                 <button onClick={saveCampana} disabled={saving}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
