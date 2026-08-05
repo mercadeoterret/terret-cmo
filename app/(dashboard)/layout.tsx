@@ -10,8 +10,6 @@ const NAV = [
   { href: '/tareas', label: 'Tareas pendientes', emoji: '✅' },
   { href: '/calendario', label: 'Calendario', emoji: '📅' },
   { section: 'Contenido' },
-  { href: '/contenido', label: 'Copies y guiones', emoji: '✏️' },
-  { href: '/briefs', label: 'Briefings', emoji: '📋' },
   { href: '/creadora', label: 'Vista creadora', emoji: '🎬' },
   { section: 'Análisis' },
   { href: '/kpis', label: 'KPIs y métricas', emoji: '📊' },
