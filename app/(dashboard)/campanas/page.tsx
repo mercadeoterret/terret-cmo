@@ -311,9 +311,19 @@ RESPONSABLE:
 
     console.log('CLAUDE OUTPUT PRIMEROS 500 CHARS:', text.substring(0, 500))
     const getField = (key: string) => {
-      const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i'))
-      const val = match ? match[1].trim() : ''
-      return val === 'N/A' ? '' : val
+      // Intenta múltiples patrones para capturar el campo
+      const patterns = [
+        new RegExp(`\\*\\*${key}\\*\\*:?\\s*([\\s\\S]*?)(?=\\n\\*\\*[A-ZÁÉÍÓÚ]|\\n##|$)`, 'i'),
+        new RegExp(`##\\s*${key}:?\\s*([\\s\\S]*?)(?=\\n##|\\n\\*\\*[A-ZÁÉÍÓÚ]|$)`, 'i'),
+        new RegExp(`${key}:?\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]{3,}:|\\n##|\\n\\*\\*|$)`, 'i'),
+      ]
+      for (const pattern of patterns) {
+        const match = text.match(pattern)
+        if (match && match[1].trim() && match[1].trim() !== 'N/A') {
+          return match[1].trim()
+        }
+      }
+      return ''
     }
 
     const updates = {
