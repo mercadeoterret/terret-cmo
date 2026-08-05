@@ -262,7 +262,20 @@ Reglas:
     fetchCampanas()
   }
 
+  function extractEstrategiaResumen(estrategiaTexto: string): string {
+    // Extraer solo concepto, mensajes clave y tono — no toda la estrategia
+    const sections: string[] = []
+    const conceptoMatch = estrategiaTexto.match(/CONCEPTO CREATIVO[\s\S]*?(?=##|$)/i)
+    const mensajesMatch = estrategiaTexto.match(/MENSAJES CLAVE[\s\S]*?(?=##|$)/i)
+    const tonoMatch = estrategiaTexto.match(/TONO Y ESTILO[\s\S]*?(?=##|$)/i)
+    if (conceptoMatch) sections.push(conceptoMatch[0].trim().substring(0, 300))
+    if (mensajesMatch) sections.push(mensajesMatch[0].trim().substring(0, 200))
+    if (tonoMatch) sections.push(tonoMatch[0].trim().substring(0, 150))
+    return sections.join('\n\n') || estrategiaTexto.substring(0, 500)
+  }
+
   async function generarContenidoPieza(pieza: Pieza, estrategiaTexto: string) {
+    const estrategiaResumen = extractEstrategiaResumen(estrategiaTexto)
     console.log('PIEZA ID:', pieza.id, 'PIEZA:', JSON.stringify(pieza))
     setGenerandoId(pieza.id)
 
@@ -272,7 +285,7 @@ Reglas:
       .join('\n')
 
     const prompt = `Eres el Director de Marketing de Terret, marca colombiana de accesorios para running.
-${estrategiaTexto ? `\nESTRATEGIA DE LA CAMPAÑA:\n${estrategiaTexto}\n` : ''}
+${estrategiaResumen ? `\nCONTEXTO DE CAMPAÑA:\n${estrategiaResumen}\n` : ''}
 PIEZA A GENERAR:
 Fecha: ${pieza.fecha}
 Canal: ${pieza.canal}
