@@ -324,10 +324,12 @@ RESPONSABLE:
       responsable: getField('RESPONSABLE') || pieza.responsable || 'David',
     }
 
-    await fetch('/api/tareas', {
+    const patchRes = await fetch('/api/tareas', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)
     })
+    const patchData = await patchRes.json()
+    console.log('PATCH STATUS:', patchRes.status, 'PATCH RESPONSE:', JSON.stringify(patchData))
 
     const piezaId = pieza.id
     setDetailPiezas(prev => prev.map(p => p.id === piezaId ? { ...p, ...updates } : p))
