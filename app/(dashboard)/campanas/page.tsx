@@ -213,73 +213,48 @@ Reglas:
 - El título debe ser descriptivo y específico
 - Responde ÚNICAMENTE con las líneas del plan, sin texto adicional`
 
-    // 2. Stream del plan e insertar piezas en tiempo real
-    const insertedTitles = new Set<string>()
+    // 2. Stream del plan completo
     let buffer = ''
-    let count = 0
-
     const res2 = await fetch('/api/claude', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
     })
     const reader = res2.body!.getReader()
     const dec = new TextDecoder()
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += dec.decode(value)
       setPlanRaw(buffer)
-
-      // Procesar líneas completas
-      const lineas = buffer.split('\n')
-      for (let i = 0; i < lineas.length - 1; i++) {
-        const linea = lineas[i].trim()
-        const match = linea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"]+)"?/)
-        if (!match) continue
-        const [, fecha, canal, tipo, titulo] = match
-        const key = `${fecha}|${canal.trim()}|${titulo.trim()}`
-        if (insertedTitles.has(key)) continue
-        insertedTitles.add(key)
-
-        // Insert inmediato
-        fetch('/api/tareas', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fecha: fecha.trim(),
-            canal: canal.trim(),
-            tipo_contenido: tipo.trim(),
-            titulo: titulo.trim(),
-            copy_exacto: '', guion: '', musica_sugerida: '', referencia_visual: '',
-            responsable: 'David', estado: 'pendiente',
-            color: CANAL_COLORS[canal.trim()] || '#185fa5',
-            campana_id: cid,
-          })
-        })
-        count++
-        setSyncCount(count)
-      }
     }
 
-    // Procesar última línea
-    const ultimaLinea = buffer.split('\n').pop()?.trim() || ''
-    const match = ultimaLinea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"]+)"?/)
-    if (match) {
+    // 3. Parsear e insertar todas las piezas de una vez al final
+    const lineas = buffer.split(/\n/)
+    const payload: Record<string, unknown>[] = []
+    const seen = new Set<string>()
+    for (const linea of lineas) {
+      const match = linea.trim().match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"\n]+)"?/)
+      if (!match) continue
       const [, fecha, canal, tipo, titulo] = match
       const key = `${fecha}|${canal.trim()}|${titulo.trim()}`
-      if (!insertedTitles.has(key)) {
-        fetch('/api/tareas', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fecha: fecha.trim(), canal: canal.trim(), tipo_contenido: tipo.trim(),
-            titulo: titulo.trim(), copy_exacto: '', guion: '', musica_sugerida: '',
-            referencia_visual: '', responsable: 'David', estado: 'pendiente',
-            color: CANAL_COLORS[canal.trim()] || '#185fa5', campana_id: cid,
-          })
-        })
-        count++
-        setSyncCount(count)
-      }
+      if (seen.has(key)) continue
+      seen.add(key)
+      payload.push({
+        fecha: fecha.trim(), canal: canal.trim(), tipo_contenido: tipo.trim(),
+        titulo: titulo.trim(), copy_exacto: '', guion: '', musica_sugerida: '',
+        referencia_visual: '', responsable: 'David', estado: 'pendiente',
+        color: CANAL_COLORS[canal.trim()] || '#185fa5', campana_id: cid,
+      })
+    }
+
+    if (payload.length > 0) {
+      const insertRes = await fetch('/api/tareas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const insertData = await insertRes.json()
+      const count = Array.isArray(insertData) ? insertData.length : 0
+      setSyncCount(count)
     }
 
     setPlanLoading(false)
