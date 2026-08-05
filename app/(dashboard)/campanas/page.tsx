@@ -34,7 +34,7 @@ const EVENTOS = [
 
 function parsePlan(texto: string) {
   const piezas: { fecha: string; canal: string; tipo_contenido: string; titulo: string }[] = []
-  for (const linea of texto.split('\n')) {
+  for (const linea of texto.split(/\n|(?=\d{4}-\d{2}-\d{2}\s*\|)/)) {
     const match = linea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"\n]+)"?/)
     if (!match) continue
     const [, fecha, canal, tipo, titulo] = match
