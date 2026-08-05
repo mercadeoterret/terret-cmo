@@ -71,6 +71,7 @@ export default function TareasPage() {
     if (filtroEstado !== 'todos' && t.estado !== filtroEstado) return false
     if (filtroResponsable !== 'todos' && t.responsable !== filtroResponsable) return false
     if (filtroCanal !== 'todos' && t.canal !== filtroCanal) return false
+    if (filtroCampana !== 'todos' && t.campana_id !== filtroCampana) return false
     return true
   })
 
