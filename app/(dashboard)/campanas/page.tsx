@@ -829,7 +829,7 @@ Todo debe estar 100% listo. La creadora o el trafficker deben poder ejecutar sin
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#9c9a92' }}>
                         {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </button>
-                      <div style={{ flex: 1 }} onClick={() => setOpenDia(isOpen ? null : fecha)} role="button" style={{ flex: 1, cursor: 'pointer' }}>
+                      <div onClick={() => setOpenDia(isOpen ? null : fecha)} role="button" style={{ flex: 1, cursor: 'pointer' }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18', textTransform: 'capitalize' }}>{formatFecha(fecha)}</div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                           {piezasDia.map((p, i) => (
