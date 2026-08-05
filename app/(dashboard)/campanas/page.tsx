@@ -328,7 +328,8 @@ RESPONSABLE:
       body: JSON.stringify(updates)
     })
 
-    setDetailPiezas(prev => prev.map(p => p.id === pieza.id ? { ...p, ...updates } : p))
+    const piezaId = pieza.id
+    setDetailPiezas(prev => prev.map(p => p.id === piezaId ? { ...p, ...updates } : p))
     setExpandedId(pieza.id)
     setGenerandoId(null)
   }
