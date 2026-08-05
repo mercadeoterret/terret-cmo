@@ -173,7 +173,7 @@ Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.
     setPlanLoading(true)
     setPlanRaw('')
     setPlanDone(false)
-    setOpenPlan(true)
+    setOpenPlan("plan")
     setSyncCount(0)
 
     // 1. Guardar campaña primero
@@ -684,7 +684,7 @@ RESPONSABLE:
                   {planDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> {syncCount} piezas</span>}
                   {!planLoading && <button onClick={generarPlan} style={{ padding: '7px 14px', background: planDone ? '#f0efe8' : '#1a1a18', color: planDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{planDone ? '↻ Regenerar' : '✦ Generar plan'}</button>}
                   {planLoading && <Loader2 size={14} className="animate-spin" style={{ color: '#185fa5' }} />}
-                  {planRaw && <button onClick={() => setOpenPlan(!openPlan)} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openDia ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
+                  {planRaw && <button onClick={() => setOpenPlan(openPlan === 'plan' ? null : 'plan')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openPlan === 'plan' ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
                 </div>
               </div>
               {planLoading && <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}><Loader2 size={14} className="animate-spin" /> Generando plan y guardando en calendario...</div>}
