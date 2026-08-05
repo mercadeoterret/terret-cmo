@@ -49,6 +49,10 @@ export default function TareasPage() {
     setLoading(false)
   }, [])
 
+  useEffect(() => {
+    fetch('/api/campanas').then(r => r.json()).then(d => setCampanas(Array.isArray(d) ? d : []))
+  }, [])
+
   useEffect(() => { loadTareas() }, [loadTareas])
 
   async function cambiarEstado(id: string, estado: string) {
@@ -187,14 +191,20 @@ export default function TareasPage() {
           <option value="Comité">Comité</option>
         </select>
 
+        <select value={filtroCampana} onChange={e => setFiltroCampana(e.target.value)}
+          style={{ padding: '7px 10px', border: '1px solid #e0dfd5', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: '#1a1a18', cursor: 'pointer' }}>
+          <option value="todos">Todas las campañas</option>
+          {campanas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+
         <select value={filtroCanal} onChange={e => setFiltroCanal(e.target.value)}
           style={{ padding: '7px 12px', border: '1px solid #e0dfd5', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', color: '#1a1a18', background: '#fff' }}>
           <option value="todos">Todos los canales</option>
           {['Instagram', 'TikTok', 'Meta Ads', 'Email', 'WhatsApp', 'Google Ads', 'Offline'].map(c => <option key={c}>{c}</option>)}
         </select>
 
-        {(filtroEstado !== 'todos' || filtroResponsable !== 'todos' || filtroCanal !== 'todos') && (
-          <button onClick={() => { setFiltroEstado('todos'); setFiltroResponsable('todos'); setFiltroCanal('todos') }}
+        {(filtroEstado !== 'todos' || filtroResponsable !== 'todos' || filtroCanal !== 'todos' || filtroCampana !== 'todos') && (
+          <button onClick={() => { setFiltroEstado('todos'); setFiltroResponsable('todos'); setFiltroCanal('todos'); setFiltroCampana('todos') }}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '7px 12px', border: '1px solid #e0dfd5', borderRadius: 8, fontSize: 12, background: '#fff', color: '#6b6a63', cursor: 'pointer', fontFamily: 'inherit' }}>
             <X size={12} /> Limpiar filtros
           </button>
