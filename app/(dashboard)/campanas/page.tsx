@@ -75,7 +75,7 @@ export default function CampanasPage() {
   const [planRaw, setPlanRaw] = useState('')
   const [planLoading, setPlanLoading] = useState(false)
   const [planDone, setPlanDone] = useState(false)
-  const [openPlan, setOpenPlan] = useState(false)
+  const [openPlan, setOpenPlan] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [syncCount, setSyncCount] = useState(0)
 
@@ -481,7 +481,7 @@ RESPONSABLE:
               <div key={fecha} style={{ background: '#fff', border: `1px solid ${todasGeneradas ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden', marginBottom: 8 }}>
                 {/* Header día */}
                 <div style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', gap: 12 }}>
-                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setOpenPlan(openPlan === fecha ? null as unknown as boolean : fecha as unknown as boolean)}>
+                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setOpenPlan(openPlan === fecha ? null : fecha)}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18', textTransform: 'capitalize' }}>{formatFecha(fecha)}</div>
                     <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 2 }}>{piezas.length} pieza{piezas.length !== 1 ? 's' : ''} · {sinContenido > 0 ? `${sinContenido} sin contenido` : 'Todo generado ✓'}</div>
                   </div>
@@ -684,7 +684,7 @@ RESPONSABLE:
                   {planDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> {syncCount} piezas</span>}
                   {!planLoading && <button onClick={generarPlan} style={{ padding: '7px 14px', background: planDone ? '#f0efe8' : '#1a1a18', color: planDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{planDone ? '↻ Regenerar' : '✦ Generar plan'}</button>}
                   {planLoading && <Loader2 size={14} className="animate-spin" style={{ color: '#185fa5' }} />}
-                  {planRaw && <button onClick={() => setOpenPlan(!openPlan)} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openPlan ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
+                  {planRaw && <button onClick={() => setOpenPlan(!openPlan)} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openDia ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
                 </div>
               </div>
               {planLoading && <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}><Loader2 size={14} className="animate-spin" /> Generando plan y guardando en calendario...</div>}
