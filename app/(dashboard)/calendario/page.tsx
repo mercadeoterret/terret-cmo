@@ -2,12 +2,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO, addMonths, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, X, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Check, Loader2, Sparkles } from 'lucide-react'
 import { RACES_CO, COMMERCIAL_DATES, RACES_INTL } from '@/lib/terret-context'
 
 const TIPO_COLORS: Record<string, string> = { contenido: '#7c3aed', pauta: '#185fa5', email: '#15803d', whatsapp: '#16a34a', offline: '#b45309', campana: '#dc2626' }
 const CANAL_EMOJI: Record<string, string> = { 'Instagram': '📸', 'TikTok': '🎵', 'Meta Ads': '💰', 'Email': '📧', 'WhatsApp': '💬' }
-interface Evento { id?: string; fecha: string; titulo: string; descripcion?: string; tipo: string; canal?: string; completado?: boolean; color?: string; estado?: string; copy_exacto?: string; guion?: string; musica_sugerida?: string; referencia_visual?: string; responsable?: string; source?: string }
+
+interface Evento {
+  id?: string; fecha: string; titulo: string; descripcion?: string; tipo: string
+  canal?: string; completado?: boolean; color?: string; estado?: string
+  copy_exacto?: string; guion?: string; musica_sugerida?: string
+  referencia_visual?: string; responsable?: string; source?: string
+  tipo_contenido?: string; campana_id?: string
+}
 
 export default function CalendarioPage() {
   const [cur, setCur] = useState(new Date())
@@ -15,6 +22,10 @@ export default function CalendarioPage() {
   const [selDay, setSelDay] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [form, setForm] = useState({ titulo: '', tipo: 'contenido', canal: '', descripcion: '' })
+  const [generandoId, setGenerandoId] = useState<string | null>(null)
+  const [generandoDia, setGenerandoDia] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
   const ms = startOfMonth(cur), me = endOfMonth(cur)
   const days = eachDayOfInterval({ start: ms, end: me })
   const pad = (getDay(ms) + 6) % 7
@@ -48,8 +59,100 @@ export default function CalendarioPage() {
     setAddOpen(false); setForm({ titulo: '', tipo: 'contenido', canal: '', descripcion: '' }); load()
   }
 
+  async function generarContenidoPieza(ev: Evento) {
+    if (!ev.id) return
+    setGenerandoId(ev.id)
+
+    // Obtener estrategia de la campaña si existe
+    let estrategiaCampana = ''
+    if (ev.campana_id) {
+      const r = await fetch(`/api/campanas`)
+      const campanas = await r.json()
+      const campana = campanas.find((c: { id: string; output_claude?: string }) => c.id === ev.campana_id)
+      if (campana?.output_claude) estrategiaCampana = campana.output_claude.split('## Plan de contenido')[0]
+    }
+
+    // Otras piezas del mismo día ya generadas (para no repetir)
+    const otrasHoy = eventos
+      .filter(e => e.fecha === ev.fecha && e.id !== ev.id && e.copy_exacto && e.source === 'db')
+      .map(e => `- ${e.canal} | ${e.tipo_contenido}: ${e.titulo}`)
+      .join('\n')
+
+    const prompt = `Eres el Director de Marketing de Terret, marca colombiana de accesorios para running.
+${estrategiaCampana ? `\nESTRATEGIA DE LA CAMPAÑA:\n${estrategiaCampana}\n` : ''}
+PIEZA A GENERAR:
+Fecha: ${ev.fecha}
+Canal: ${ev.canal || ev.tipo}
+Tipo: ${ev.tipo_contenido || ev.tipo}
+Título: ${ev.titulo}
+${otrasHoy ? `\nOTRAS PIEZAS YA GENERADAS PARA ESTE DÍA (no repetir):\n${otrasHoy}\n` : ''}
+Genera el contenido COMPLETO y LISTO PARA EJECUTAR:
+
+COPY EXACTO:
+[Texto completo listo para publicar. Para email: asunto + cuerpo completo. Para WhatsApp: mensaje completo. Para redes: caption con hashtags. Para pauta: texto principal + titular + descripción]
+
+GUION:
+[Solo si es video/reel/ugc. Hook exacto (0-3s) → Desarrollo (4-25s) → CTA final. Si no aplica, escribe "N/A"]
+
+MUSICA:
+[Artista - Canción específica O género + mood específico]
+
+REFERENCIA VISUAL:
+[Locación exacta, vestuario, iluminación, ángulo de cámara]
+
+RESPONSABLE:
+[David / Creadora / Comité]
+
+Todo debe estar 100% listo para ejecutar sin preguntar nada.`
+
+    const res = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
+    })
+
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += dec.decode(value)
+    }
+
+    const getField = (key: string) => {
+      const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i'))
+      return match ? match[1].trim().replace(/^N\/A$/i, '') : ''
+    }
+
+    await fetch('/api/tareas', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ev.id,
+        copy_exacto: getField('COPY EXACTO'),
+        guion: getField('GUION'),
+        musica_sugerida: getField('MUSICA'),
+        referencia_visual: getField('REFERENCIA VISUAL'),
+        responsable: getField('RESPONSABLE') || ev.responsable || 'David',
+      })
+    })
+
+    setGenerandoId(null)
+    setExpandedId(ev.id)
+    load()
+  }
+
+  async function generarTodoDia(fecha: string) {
+    setGenerandoDia(fecha)
+    const piezasDia = eventos.filter(e => e.fecha === fecha && e.source === 'db' && !e.copy_exacto)
+    for (const ev of piezasDia) {
+      await generarContenidoPieza(ev)
+    }
+    setGenerandoDia(null)
+  }
+
   const selEvs = selDay ? getEvs(selDay) : []
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const selDbEvs = selEvs.filter(e => e.source === 'db')
+  const selPendientes = selDbEvs.filter(e => !e.copy_exacto)
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -78,16 +181,17 @@ export default function CalendarioPage() {
           {days.map(day => {
             const ds = format(day, 'yyyy-MM-dd')
             const evs = getEvs(ds)
-            const pendientes = evs.filter(e => e.source === 'db' && e.estado === 'pendiente').length
-            const todos = evs.filter(e => e.source === 'db').length
-            const allDone = todos > 0 && pendientes === 0
+            const dbEvs = evs.filter(e => e.source === 'db')
+            const pendientes = dbEvs.filter(e => e.estado === 'pendiente').length
+            const sinContenido = dbEvs.filter(e => !e.copy_exacto).length
+            const allDone = dbEvs.length > 0 && pendientes === 0
             return (
               <div key={ds} onClick={() => setSelDay(ds)}
                 style={{ minHeight: 80, borderRadius: 6, padding: '5px 6px', cursor: 'pointer', background: isToday(day) ? '#fff' : evs.length ? '#fff' : '#f5f4ef', border: isToday(day) ? '2px solid #185fa5' : evs.length ? '1px solid #e0dfd5' : 'none', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: isToday(day) ? '#185fa5' : '#6b6a63' }}>{format(day, 'd')}</span>
                   {allDone && <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={8} color="white" /></div>}
-                  {pendientes > 0 && <div style={{ fontSize: 9, fontWeight: 700, background: '#dc2626', color: '#fff', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pendientes}</div>}
+                  {sinContenido > 0 && <div style={{ fontSize: 9, fontWeight: 700, background: '#7c3aed', color: '#fff', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Piezas sin contenido">{sinContenido}</div>}
                 </div>
                 {evs.slice(0, 3).map((ev, i) => (
                   <div key={i} style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, marginBottom: 2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600, opacity: ev.estado === 'publicado' ? .4 : 1, background: (ev.color || '#185fa5') + '25', color: ev.color || '#185fa5' }}>
@@ -103,36 +207,103 @@ export default function CalendarioPage() {
 
       {/* Modal día */}
       {selDay && !addOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }} onClick={() => setSelDay(null)}>
-          <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }} onClick={() => { setSelDay(null); setExpandedId(null) }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a18' }}>{format(parseISO(selDay), "EEEE d 'de' MMMM", { locale: es }).replace(/^\w/, c => c.toUpperCase())}</div>
-              <button onClick={() => setSelDay(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}><X size={16} /></button>
-            </div>
-            {selEvs.length === 0 ? <p style={{ fontSize: 13, color: '#9c9a92', textAlign: 'center', padding: '20px 0' }}>Sin eventos.</p> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                {selEvs.map((ev, i) => (
-                  <div key={i} style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #e0dfd5', borderLeft: `3px solid ${ev.color || '#185fa5'}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{ev.titulo}</div>
-                      {ev.source === 'db' && ev.id && ev.estado !== 'publicado' && (
-                        <button onClick={() => cambiarEstado(ev.id!, ev.estado === 'pendiente' ? 'en_progreso' : ev.estado === 'en_progreso' ? 'en_revision' : 'publicado')}
-                          style={{ padding: '4px 10px', background: '#f0efe8', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          {ev.estado === 'pendiente' ? '▶ Iniciar' : ev.estado === 'en_progreso' ? '👁 Revisión' : '✓ Publicar'}
-                        </button>
-                      )}
-                      {ev.estado === 'publicado' && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Publicado</span>}
-                    </div>
-                    {ev.descripcion && <div style={{ fontSize: 11, color: '#6b6a63' }}>{ev.descripcion}</div>}
-                    {ev.copy_exacto && <div style={{ fontSize: 12, color: '#6b6a63', marginTop: 6, padding: '8px', background: '#f5f4ef', borderRadius: 6, lineHeight: 1.5, overflow: 'hidden', maxHeight: 60 }}>{ev.copy_exacto}</div>}
-                    {ev.musica_sugerida && <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 4, fontWeight: 600 }}>🎵 {ev.musica_sugerida}</div>}
-                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                      {ev.canal && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: (ev.color || '#185fa5') + '20', color: ev.color || '#185fa5' }}>{ev.canal}</span>}
-                      {ev.responsable && <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: ev.responsable === 'Creadora' ? '#f3e8ff' : '#e6f1fb', color: ev.responsable === 'Creadora' ? '#7c3aed' : '#185fa5' }}>{ev.responsable}</span>}
-                      {ev.source === 'race' && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#fee2e2', color: '#b91c1c' }}>🏃 Carrera CO</span>}
-                    </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {selPendientes.length > 0 && !generandoDia && (
+                  <button onClick={() => generarTodoDia(selDay)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <Sparkles size={11} /> Generar todo el día
+                  </button>
+                )}
+                {generandoDia === selDay && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#185fa5' }}>
+                    <Loader2 size={12} className="animate-spin" /> Generando...
                   </div>
-                ))}
+                )}
+                <button onClick={() => { setSelDay(null); setExpandedId(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}><X size={16} /></button>
+              </div>
+            </div>
+
+            {selEvs.length === 0 ? (
+              <p style={{ fontSize: 13, color: '#9c9a92', textAlign: 'center', padding: '20px 0' }}>Sin eventos.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {selEvs.map((ev, i) => {
+                  const isExpanded = expandedId === ev.id
+                  const isGenerando = generandoId === ev.id
+                  const tieneCopy = !!ev.copy_exacto
+
+                  return (
+                    <div key={i} style={{ borderRadius: 10, border: '1px solid #e0dfd5', borderLeft: `3px solid ${ev.color || '#185fa5'}`, overflow: 'hidden' }}>
+                      {/* Header pieza */}
+                      <div style={{ padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{ev.titulo}</div>
+                            <div style={{ fontSize: 11, color: '#6b6a63', marginTop: 2 }}>
+                              {ev.canal && `${CANAL_EMOJI[ev.canal] || ''} ${ev.canal}`}
+                              {ev.tipo_contenido && ` · ${ev.tipo_contenido}`}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                            {/* Botón generar contenido */}
+                            {ev.source === 'db' && ev.id && !isGenerando && (
+                              <button onClick={() => generarContenidoPieza(ev)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: tieneCopy ? '#f0efe8' : '#7c3aed', color: tieneCopy ? '#6b6a63' : '#fff', border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                <Sparkles size={10} />
+                                {tieneCopy ? 'Regenerar' : 'Generar'}
+                              </button>
+                            )}
+                            {isGenerando && <Loader2 size={13} className="animate-spin" style={{ color: '#7c3aed' }} />}
+                            {/* Botón cambiar estado */}
+                            {ev.source === 'db' && ev.id && ev.estado !== 'publicado' && (
+                              <button onClick={() => cambiarEstado(ev.id!, ev.estado === 'pendiente' ? 'en_progreso' : ev.estado === 'en_progreso' ? 'en_revision' : 'publicado')}
+                                style={{ padding: '5px 10px', background: '#f0efe8', border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                {ev.estado === 'pendiente' ? '▶ Iniciar' : ev.estado === 'en_progreso' ? '👁 Revisar' : '✓ Publicar'}
+                              </button>
+                            )}
+                            {ev.estado === 'publicado' && <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>✓ Publicado</span>}
+                            {/* Toggle ver contenido */}
+                            {tieneCopy && ev.id && (
+                              <button onClick={() => setExpandedId(isExpanded ? null : ev.id!)}
+                                style={{ fontSize: 10, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, padding: '5px' }}>
+                                {isExpanded ? '▲' : '▼'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Tags */}
+                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                          {ev.responsable && <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: ev.responsable === 'Creadora' ? '#f3e8ff' : '#e6f1fb', color: ev.responsable === 'Creadora' ? '#7c3aed' : '#185fa5' }}>{ev.responsable}</span>}
+                          {ev.estado && ev.source === 'db' && <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: ev.estado === 'publicado' ? '#dcfce7' : ev.estado === 'en_revision' ? '#fef9c3' : ev.estado === 'en_progreso' ? '#dbeafe' : '#f0efe8', color: ev.estado === 'publicado' ? '#15803d' : ev.estado === 'en_revision' ? '#92400e' : ev.estado === 'en_progreso' ? '#185fa5' : '#6b6a63' }}>{ev.estado}</span>}
+                          {!tieneCopy && ev.source === 'db' && <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: '#f3e8ff', color: '#7c3aed' }}>Sin contenido</span>}
+                          {ev.source === 'race' && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#fee2e2', color: '#b91c1c' }}>🏃 Carrera CO</span>}
+                        </div>
+                      </div>
+
+                      {/* Contenido expandido */}
+                      {isExpanded && tieneCopy && (
+                        <div style={{ padding: '12px 14px', background: '#f9f8f4', borderTop: '1px solid #f0efe8' }}>
+                          {[
+                            { label: 'Copy exacto', value: ev.copy_exacto },
+                            { label: 'Guión', value: ev.guion },
+                            { label: 'Música sugerida', value: ev.musica_sugerida },
+                            { label: 'Referencia visual', value: ev.referencia_visual },
+                          ].filter(f => f.value).map(field => (
+                            <div key={field.label} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: '#9c9a92', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{field.label}</div>
+                              <div style={{ fontSize: 12, color: '#1a1a18', lineHeight: 1.6, whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e0dfd5', borderRadius: 7, padding: '8px 10px' }}>{field.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
             <button onClick={() => setAddOpen(true)} style={{ width: '100%', padding: '9px', border: '1px dashed #c0bfb5', borderRadius: 8, fontSize: 12, color: '#6b6a63', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit' }}>
@@ -146,7 +317,7 @@ export default function CalendarioPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }} onClick={() => setAddOpen(false)}>
           <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Agregar — {format(parseISO(selDay), "d 'de' MMMM", { locale: es })}</div>
-            {[['Título *', 'text', 'titulo', 'Ej: Reel tobilleras'],['Canal', 'text', 'canal', 'Instagram, TikTok...'],['Descripción', 'text', 'descripcion', 'Detalles...']].map(([l,t,k,p]) => (
+            {[['Título *', 'text', 'titulo', 'Ej: Reel tobilleras'], ['Canal', 'text', 'canal', 'Instagram, TikTok...'], ['Descripción', 'text', 'descripcion', 'Detalles...']].map(([l, t, k, p]) => (
               <div key={k} style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#6b6a63', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>{l}</label>
                 <input value={(form as Record<string, string>)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} placeholder={p} style={{ width: '100%', padding: '8px 12px', border: '1px solid #c0bfb5', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
