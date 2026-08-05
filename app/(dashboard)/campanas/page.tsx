@@ -263,6 +263,7 @@ Reglas:
   }
 
   async function generarContenidoPieza(pieza: Pieza, estrategiaTexto: string) {
+    console.log('PIEZA ID:', pieza.id, 'PIEZA:', JSON.stringify(pieza))
     setGenerandoId(pieza.id)
 
     const otrasHoy = detailPiezas
