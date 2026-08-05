@@ -29,6 +29,8 @@ export default function TareasPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [filtroResponsable, setFiltroResponsable] = useState<string>('todos')
   const [filtroCanal, setFiltroCanal] = useState<string>('todos')
+  const [filtroCampana, setFiltroCampana] = useState<string>('todos')
+  const [campanas, setCampanas] = useState<{id: string, nombre: string}[]>([])
   const [selectedTarea, setSelectedTarea] = useState<Tarea | null>(null)
   const [view, setView] = useState<'lista' | 'kanban'>('lista')
 
