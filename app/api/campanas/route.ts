@@ -40,6 +40,10 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+
+  const { error: tareasError } = await sb().from('calendario_eventos').delete().eq('campana_id', id)
+  if (tareasError) return NextResponse.json({ error: tareasError.message }, { status: 500 })
+
   const { error } = await sb().from('campanas').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
