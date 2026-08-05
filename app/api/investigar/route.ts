@@ -73,10 +73,12 @@ Con toda esa información, propón LA MEJOR oportunidad de campaña o contenido 
     }
 
     // FASE 2: Generar estrategia de la campaña
+    const systemAutonomo = 'Eres el Director de Marketing de Terret, marca colombiana de accesorios para running (medias de compresión, cinturones, viseras). Tomas decisiones autónomas y ejecutivas. Nunca pides datos adicionales — decides tú mismo con el contexto disponible. Generas contenido específico, creativo y listo para ejecutar.'
+
     const estrategiaRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3000,
-      system,
+      system: systemAutonomo,
       messages: [{
         role: 'user',
         content: `${investigacion}
@@ -118,7 +120,7 @@ Luego genera la estrategia completa:
     const planRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3000,
-      system,
+      system: systemAutonomo,
       messages: [{
         role: 'user',
         content: `CAMPAÑA: ${campanaMeta.nombre}
