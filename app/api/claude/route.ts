@@ -1,4 +1,5 @@
 export const maxDuration = 300
+export const runtime = 'edge'
 
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest } from 'next/server'
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
     const kpis = kpisData || {}
     const brandKnowledge = (brandData || []).map((b: { contenido: string }) => b.contenido)
     const system = buildSystemPrompt(kpis, brandKnowledge)
-    const maxTokens = mode === 'campana' ? 2000 : 1000
+    const maxTokens = mode === 'campana' ? 8000 : 2000
     const stream = await anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system, messages })
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(chunk.delta.text))
           }
         }
+        const final = await stream.finalMessage()
+        console.log(`[Claude usage] input:${final.usage.input_tokens} output:${final.usage.output_tokens} total:${final.usage.input_tokens + final.usage.output_tokens}`)
         controller.close()
       },
     })
