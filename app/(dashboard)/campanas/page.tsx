@@ -1,20 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Loader2, ChevronDown, ChevronRight, Check, Calendar, Save, Trash2, Eye } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronRight, Check, Calendar, Save, Trash2, Eye, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
-interface Fase {
-  id: string
-  label: string
-  emoji: string
-  descripcion: string
-  output: string
-  loading: boolean
-  done: boolean
-  prompt: (ctx: CampanaCtx) => string
-}
-
 interface CampanaCtx {
   nombre: string
   descripcion: string
@@ -29,7 +18,8 @@ interface CampanaCtx {
   notas: string
 }
 
-interface Tarea {
+interface Pieza {
+  id?: string
   fecha: string
   canal: string
   tipo_contenido: string
@@ -41,18 +31,37 @@ interface Tarea {
   responsable: string
   estado: string
   color: string
+  campana_id?: string
+  generando?: boolean
+  guardada?: boolean
+}
+
+interface DiaAgrupado {
+  fecha: string
+  piezas: Pieza[]
 }
 
 interface Campana {
-  id: string; nombre: string; estado: string; fecha_inicio: string
-  fecha_fin: string; objetivo: string; created_at: string
+  id: string
+  nombre: string
+  estado: string
+  fecha_inicio: string
+  fecha_fin: string
+  objetivo: string
+  created_at: string
+  output_claude?: string
 }
 
-// ─── COLORES ─────────────────────────────────────────────────────────────────
+// ─── CONSTANTES ──────────────────────────────────────────────────────────────
 const CANAL_COLORS: Record<string, string> = {
-  'Instagram': '#e040fb', 'TikTok': '#00bcd4', 'Meta Ads': '#1877f2',
-  'Google Ads': '#4285f4', 'Email': '#15803d', 'WhatsApp': '#25d366',
-  'Offline': '#b45309', 'Stories': '#e040fb',
+  'Instagram': '#e040fb',
+  'TikTok': '#00bcd4',
+  'Meta Ads': '#1877f2',
+  'Google Ads': '#4285f4',
+  'Email': '#15803d',
+  'WhatsApp': '#25d366',
+  'Offline': '#b45309',
+  'Stories': '#e040fb',
 }
 
 const EVENTOS = [
@@ -68,78 +77,123 @@ const EVENTOS = [
   { value: 'hotsale2', label: 'Hot Sale Colombia 2ª ed. — 20-24 oct 2026' },
 ]
 
-// ─── PARSER DE TAREAS ─────────────────────────────────────────────────────────
-function parseTareas(texto: string, campanaId: string): Record<string, unknown>[] {
-  const tareas: Record<string, unknown>[] = []
-  // Buscar bloques TAREA:
-  const bloques = texto.split(/(?=TAREA:|\n-\s*TAREA:)/).filter(b => b.includes('FECHA:'))
-  
-  for (const bloque of bloques) {
-    const get = (key: string) => {
-      const match = bloque.match(new RegExp(`${key}:\\s*([^\\n]+)`))
-      return match ? match[1].trim() : ''
-    }
-    const fecha = get('FECHA')
-    const canal = get('CANAL')
-    const tipo = get('TIPO')
-    const titulo = get('TITULO') || get('TAREA')
-    
-    if (!fecha || !canal) continue
-    
-    // Extraer copy exacto (puede ser multiline)
-    const copyMatch = bloque.match(/COPY:([\s\S]*?)(?=GUION:|MUSICA:|REFERENCIA:|RESPONSABLE:|TAREA:|$)/i)
-    const copy = copyMatch ? copyMatch[1].trim() : ''
-    
-    const guionMatch = bloque.match(/GUION:([\s\S]*?)(?=MUSICA:|REFERENCIA:|RESPONSABLE:|TAREA:|$)/i)
-    const guion = guionMatch ? guionMatch[1].trim() : ''
-    
+// ─── PARSER DE PLAN DE CONTENIDO ─────────────────────────────────────────────
+function parsePlanContenido(texto: string): Omit<Pieza, 'generando' | 'guardada'>[] {
+  const piezas: Omit<Pieza, 'generando' | 'guardada'>[] = []
+  const lineas = texto.split('\n').filter(l => l.trim())
+
+  for (const linea of lineas) {
+    // Formato: YYYY-MM-DD | Canal | Tipo | "Título"
+    const match = linea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"]+)"?/)
+    if (!match) continue
+    const [, fecha, canal, tipo, titulo] = match
     const canalClean = canal.trim()
-    
-    tareas.push({
+    piezas.push({
       fecha: fecha.trim(),
       canal: canalClean,
-      tipo_contenido: tipo.trim() || 'Contenido',
-      titulo: titulo.trim() || `${tipo} ${canalClean}`,
-      copy_exacto: copy,
-      guion: guion,
-      musica_sugerida: get('MUSICA'),
-      referencia_visual: get('REFERENCIA'),
-      responsable: get('RESPONSABLE') || 'David',
+      tipo_contenido: tipo.trim(),
+      titulo: titulo.trim(),
+      copy_exacto: '',
+      guion: '',
+      musica_sugerida: '',
+      referencia_visual: '',
+      responsable: 'David',
       estado: 'pendiente',
       color: CANAL_COLORS[canalClean] || '#185fa5',
-      campana_id: campanaId,
-      tipo: ['Email','email'].some(e => canalClean.includes(e)) ? 'email' :
-            ['WhatsApp','whatsapp'].some(e => canalClean.includes(e)) ? 'whatsapp' :
-            ['Ads','Pauta'].some(e => canalClean.includes(e)) ? 'pauta' :
-            ['Offline','Stand'].some(e => canalClean.includes(e)) ? 'offline' : 'contenido',
     })
   }
-  return tareas
+  return piezas
 }
 
-// ─── FASES DE GENERACIÓN ──────────────────────────────────────────────────────
-function buildFases(ctx: CampanaCtx): Fase[] {
-  const eventoLabel = EVENTOS.find(e => e.value === ctx.evento)?.label || 'Sin evento específico'
-  const base = `CAMPAÑA: ${ctx.nombre}
+// ─── AGRUPAR PIEZAS POR DÍA ──────────────────────────────────────────────────
+function agruparPorDia(piezas: Pieza[]): DiaAgrupado[] {
+  const map: Record<string, Pieza[]> = {}
+  for (const p of piezas) {
+    if (!map[p.fecha]) map[p.fecha] = []
+    map[p.fecha].push(p)
+  }
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([fecha, piezas]) => ({ fecha, piezas }))
+}
+
+function formatFecha(fecha: string) {
+  const d = new Date(fecha + 'T12:00:00')
+  return d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+export default function CampanasPage() {
+  const [view, setView] = useState<'list' | 'builder' | 'detail'>('list')
+  const [campanas, setCampanas] = useState<Campana[]>([])
+  const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null)
+
+  // Builder state
+  const [step, setStep] = useState(0) // 0=form, 1=estrategia, 2=plan, 3=piezas
+  const [ctx, setCtx] = useState<CampanaCtx>({
+    nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '',
+    presupuesto: '', evento: '', objetivo: '',
+    canales: ['Meta Ads', 'Instagram orgánico', 'Email marketing'],
+    creadora: 'Sí, disponible completo',
+    audiencia: ['Corredores urbanos / running'], notas: ''
+  })
+
+  // Fase 1 — Estrategia
+  const [estrategia, setEstrategia] = useState('')
+  const [estrategiaLoading, setEstrategiaLoading] = useState(false)
+  const [estrategiaDone, setEstrategiaDone] = useState(false)
+  const [openEstrategia, setOpenEstrategia] = useState(false)
+
+  // Fase 2 — Plan de contenido
+  const [planRaw, setPlanRaw] = useState('')
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planDone, setPlanDone] = useState(false)
+  const [openPlan, setOpenPlan] = useState(false)
+
+  // Fase 3 — Piezas
+  const [piezas, setPiezas] = useState<Pieza[]>([])
+  const [openDia, setOpenDia] = useState<string | null>(null)
+  const [openPieza, setOpenPieza] = useState<string | null>(null)
+
+  // Guardar campaña
+  const [savedId, setSavedId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { fetchCampanas() }, [])
+
+  async function fetchCampanas() {
+    const r = await fetch('/api/campanas')
+    const d = await r.json()
+    setCampanas(Array.isArray(d) ? d : [])
+  }
+
+  function toggleArr(arr: string[], v: string) {
+    return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
+  }
+
+  function getBase() {
+    const eventoLabel = EVENTOS.find(e => e.value === ctx.evento)?.label || 'Sin evento específico'
+    return `CAMPAÑA: ${ctx.nombre}
 PERÍODO: ${ctx.fecha_inicio} al ${ctx.fecha_fin}
 PRESUPUESTO: ${ctx.presupuesto} COP
 EVENTO RELACIONADO: ${eventoLabel}
 OBJETIVO: ${ctx.objetivo}
-CANALES: ${ctx.canales.join(', ')}
+CANALES DISPONIBLES: ${ctx.canales.join(', ')}
 AUDIENCIA: ${ctx.audiencia.join(', ')}
 CREADORA: ${ctx.creadora}
 NOTAS: ${ctx.notas || 'Ninguna'}`
+  }
 
-  return [
-    {
-      id: 'estrategia',
-      label: 'Estrategia y narrativa',
-      emoji: '🎯',
-      descripcion: 'Concepto creativo, posicionamiento y narrativa de la campaña',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
+  // ─── GENERAR ESTRATEGIA ────────────────────────────────────────────────────
+  async function generarEstrategia() {
+    setEstrategiaLoading(true)
+    setEstrategia('')
+    setEstrategiaDone(false)
+    setOpenEstrategia(true)
 
-Genera la ESTRATEGIA COMPLETA de la campaña con estas secciones:
+    const prompt = `${getBase()}
+
+Genera la ESTRATEGIA COMPLETA de la campaña:
 
 ## CONCEPTO CREATIVO
 (El gran concepto que une toda la campaña — el "por qué" emocional)
@@ -160,289 +214,98 @@ Genera la ESTRATEGIA COMPLETA de la campaña con estas secciones:
 (Qué están haciendo otros y cómo nos diferenciamos)
 
 Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.`
-    },
-    {
-      id: 'cronograma',
-      label: 'Cronograma día a día',
-      emoji: '📅',
-      descripcion: 'Cada día del período con su tarea específica lista para ejecutar',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
-
-Genera el CRONOGRAMA COMPLETO día a día desde ${ctx.fecha_inicio} hasta ${ctx.fecha_fin}.
-
-FORMATO OBLIGATORIO para cada tarea (exactamente así):
-
-TAREA:
-FECHA: YYYY-MM-DD
-CANAL: [Instagram/TikTok/Meta Ads/Google Ads/Email/WhatsApp/Offline]
-TIPO: [Reel/Carrusel/Story/Post/Pauta/Email/Estado/Video UGC]
-TITULO: [Título corto descriptivo]
-COPY: [Texto EXACTO y completo para publicar — listo para copiar y pegar]
-GUION: [Si es video: Hook exacto (0-3s) → Desarrollo (4-25s) → CTA (últimos 3s). Si no aplica, dejar vacío]
-MUSICA: [Artista - Canción específica O género + mood. Ej: "Bad Bunny - Un Verano Sin Ti (energía latina)" o "EDM motivacional, 128 BPM, tipo Nike Run"]
-REFERENCIA: [Descripción visual exacta: locación, vestuario, iluminación, ángulo de cámara]
-RESPONSABLE: [David/Creadora/Comité]
-
-Genera UNA tarea por día como mínimo. Para días de alta intensidad (antes de carreras, lanzamientos), genera múltiples tareas.
-No saltes ningún día del período.
-Los copies deben estar LISTOS para publicar sin modificaciones.`
-    },
-    {
-      id: 'copies',
-      label: 'Copies y carruseles',
-      emoji: '✍️',
-      descripcion: 'Textos completos, slide por slide de carruseles, captions con hashtags',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
-
-Genera TODO el contenido de texto de la campaña:
-
-## CAPTIONS PARA REELS/POSTS (5 variaciones)
-Para cada uno:
-- Primera línea (el gancho — máx 125 caracteres)
-- Cuerpo del texto (completo, listo para publicar)
-- CTA específico
-- Hashtags (20 hashtags relevantes)
-
-## CARRUSELES (3 carruseles completos)
-Para cada carrusel:
-- Slide 1 (portada): Texto exacto + descripción visual
-- Slides 2-7: Texto exacto de cada slide
-- Slide final: CTA exacto
-
-## TEXTOS PARA STORIES (secuencia de 6 stories)
-Para cada story:
-- Texto en pantalla (máx 5 palabras potentes)
-- Sticker sugerido (encuesta/pregunta/cuenta regresiva)
-- CTA
-
-## COPIES PARA META ADS (3 variaciones)
-Cada una con:
-- Texto principal (125 caracteres)
-- Titular (40 caracteres)
-- Descripción (30 caracteres)
-
-Todo debe estar en voz de Terret. Todo listo para copiar y pegar directamente.`
-    },
-    {
-      id: 'guiones',
-      label: 'Guiones de video',
-      emoji: '🎬',
-      descripcion: 'Guiones completos para cada video UGC con música, locación y vestuario',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
-
-Genera GUIONES COMPLETOS para todos los videos de la campaña:
-
-## VIDEO UGC PRINCIPAL (60-90 segundos)
-**CONCEPTO:** [Idea central]
-**LOCACIÓN:** [Dónde grabar — específico: parque, ruta, gimnasio, calle]
-**VESTUARIO:** [Qué ropa Terret usar — colores, productos específicos]
-**ILUMINACIÓN:** [Natural mañana / tarde / noche / artificial]
-**MÚSICA DE FONDO:** [Artista - Canción específica + timestamp de qué parte usar]
-**GUION EXACTO:**
-- HOOK (0-3s): [Texto exacto que dice la creadora O acción visual]
-- DESARROLLO (4-45s): [Escena por escena — qué hace, qué dice, qué muestra]
-- CTA (46-60s): [Texto exacto del cierre + call to action]
-**SUBTÍTULOS:** [Frases clave para poner en pantalla]
-
-## REEL 15 SEGUNDOS (x3 variaciones)
-Para cada reel:
-- Concepto en una línea
-- Texto en pantalla segundo a segundo
-- Audio/música sugerida
-- Transiciones
-
-## VIDEO PARA META ADS (30 segundos)
-- Hook visual (qué se ve en el primer frame)
-- Desarrollo
-- Oferta/CTA final
-- Texto en pantalla
-
-La creadora debe poder leer esto y grabar sin preguntar nada.`
-    },
-    {
-      id: 'pauta',
-      label: 'Estrategia de pauta',
-      emoji: '📢',
-      descripcion: 'Estructura completa de Meta Ads, Google Ads y TikTok Ads',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
-
-Genera la ESTRATEGIA COMPLETA DE PAUTA PAGADA:
-
-## META ADS
-**Estructura de campaña:**
-- Campaña: [Nombre + objetivo de campaña]
-- Presupuesto total Meta: $[X] COP
-- Distribución por semana: Semana 1: $X, Semana 2: $X, etc.
-
-**Conjuntos de anuncios:**
-Para cada adset:
-- Nombre del adset
-- Audiencia detallada (intereses, comportamientos, edades)
-- Presupuesto diario
-- Formato del anuncio
-- Copy a usar (de los generados en la fase de copies)
-
-**Segmentación recomendada:**
-- Audiencia fría (prospección)
-- Audiencia tibia (retargeting visitantes web)
-- Audiencia caliente (clientes anteriores)
-
-## GOOGLE ADS
-- Tipo de campaña recomendada
-- Keywords principales (15 keywords con match type)
-- Presupuesto diario
-- Extensiones de anuncio
-
-## TIKTOK ADS
-- Formato de campaña
-- Audiencia
-- Presupuesto
-- Creative guidelines específicas para TikTok
-
-## CALENDARIO DE PAUTA
-- Qué activar cuándo y por qué
-- Cuándo escalar presupuesto
-- Cuándo pausar y optimizar
-
-## MÉTRICAS Y SEMÁFOROS
-- Verde: ROAS >7x, CPM <$X, CTR >2%
-- Amarillo: ROAS 5-7x — mantener y optimizar
-- Rojo: ROAS <5x — pausar y revisar`
-    },
-    {
-      id: 'email_whatsapp',
-      label: 'Emails y WhatsApp',
-      emoji: '📧',
-      descripcion: 'Emails completos listos para enviar y estados de WhatsApp',
-      output: '', loading: false, done: false,
-      prompt: () => `${base}
-
-Genera toda la comunicación directa de la campaña:
-
-## SECUENCIA DE EMAILS (mínimo 4 emails)
-
-### EMAIL 1 — ANUNCIO (enviar al inicio de campaña)
-- ASUNTO A: [opción A]
-- ASUNTO B: [opción B para A/B test]
-- PREHEADER: [texto del preheader]
-- CUERPO COMPLETO:
-[Texto exacto del email — saludos, cuerpo, CTA]
-- CTA BOTÓN: [Texto del botón]
-- URL: [terretsports.com/...]
-
-### EMAIL 2 — CONTENIDO DE VALOR (mitad de campaña)
-[Mismo formato]
-
-### EMAIL 3 — URGENCIA (3 días antes del fin/evento)
-[Mismo formato]
-
-### EMAIL 4 — ÚLTIMO LLAMADO (día final)
-[Mismo formato]
-
-## ESTADOS DE WHATSAPP (7 estados — uno por día de la semana)
-Para cada estado:
-- Texto (máx 139 caracteres)
-- Emoji sugerido
-- Día recomendado para publicar
-
-## MENSAJES DE DIFUSIÓN WHATSAPP (3 mensajes)
-Para cada mensaje:
-- Texto completo (tono personal, no spam)
-- Cuándo enviar
-- Qué segmento de contactos
-
-Todo debe estar listo para copiar y pegar directamente.`
-    },
-  ]
-}
-
-// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
-export default function CampanasPage() {
-  const [view, setView] = useState<'list' | 'builder' | 'detail'>('list')
-  const [campanas, setCampanas] = useState<Campana[]>([])
-  const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null)
-
-  // Builder state
-  const [step, setStep] = useState(0) // 0=form, 1=fases
-  const [ctx, setCtx] = useState<CampanaCtx>({
-    nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '',
-    presupuesto: '', evento: '', objetivo: '',
-    canales: ['Meta Ads', 'Instagram orgánico', 'Email marketing'],
-    creadora: 'Sí, disponible completo',
-    audiencia: ['Corredores urbanos / running'], notas: ''
-  })
-  const [fases, setFases] = useState<Fase[]>([])
-  const [openFase, setOpenFase] = useState<string | null>(null)
-  const [savedId, setSavedId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [syncDone, setSyncDone] = useState(false)
-  const [syncCount, setSyncCount] = useState(0)
-  const [syncing, setSyncing] = useState(false)
-
-  useEffect(() => { fetchCampanas() }, [])
-
-  async function fetchCampanas() {
-    const r = await fetch('/api/campanas')
-    const d = await r.json()
-    setCampanas(Array.isArray(d) ? d : [])
-  }
-
-  function toggleArr(arr: string[], v: string) {
-    return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]
-  }
-
-  function startBuilder() {
-    const fs = buildFases(ctx)
-    setFases(fs)
-    setStep(1)
-    setOpenFase(fs[0].id)
-    setSavedId(null)
-    setSyncDone(false)
-  }
-
-  async function generarFase(faseId: string) {
-    const fase = fases.find(f => f.id === faseId)
-    if (!fase) return
-
-    setFases(prev => prev.map(f => f.id === faseId ? { ...f, loading: true, output: '' } : f))
 
     const res = await fetch('/api/claude', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: fase.prompt(ctx) }] })
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
     })
 
-    const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
     while (true) {
-      const { done, value } = await reader.read(); if (done) break
+      const { done, value } = await reader.read()
+      if (done) break
       text += dec.decode(value)
-      setFases(prev => prev.map(f => f.id === faseId ? { ...f, output: text } : f))
+      setEstrategia(text)
     }
-
-    setFases(prev => prev.map(f => f.id === faseId ? { ...f, loading: false, done: true } : f))
+    setEstrategiaLoading(false)
+    setEstrategiaDone(true)
   }
 
-  async function generarTodas() {
-    for (const fase of fases) {
-      if (!fase.done) await generarFase(fase.id)
+  // ─── GENERAR PLAN DE CONTENIDO ─────────────────────────────────────────────
+  async function generarPlan() {
+    setPlanLoading(true)
+    setPlanRaw('')
+    setPlanDone(false)
+    setOpenPlan(true)
+
+    const prompt = `${getBase()}
+
+ESTRATEGIA DE LA CAMPAÑA:
+${estrategia}
+
+Eres el Director de Marketing de Terret. Decide el plan de contenido completo para esta campaña.
+
+Para cada día del período (${ctx.fecha_inicio} al ${ctx.fecha_fin}), decide qué piezas de contenido se van a producir y publicar.
+
+FORMATO OBLIGATORIO — una línea por pieza, exactamente así:
+YYYY-MM-DD | Canal | Tipo | "Título de la pieza"
+
+Canales disponibles: ${ctx.canales.join(', ')}
+Tipos posibles: Reel, Carrusel, Story, Post, Video UGC, Email, Estado WhatsApp, Pauta Meta, Pauta Google, Pauta TikTok, Contenido Offline
+
+Reglas:
+- Un día puede tener múltiples piezas en diferentes canales
+- No expliques por qué — solo el plan
+- No saltes ningún día del período
+- Sé ambicioso pero realista con los recursos disponibles
+- El título debe ser descriptivo y específico (no genérico)
+
+Responde ÚNICAMENTE con las líneas del plan, sin texto adicional.`
+
+    const res = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
+    })
+
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += dec.decode(value)
+      setPlanRaw(text)
     }
+
+    // Parsear y crear piezas vacías
+    const parsed = parsePlanContenido(text)
+    setPiezas(parsed.map(p => ({ ...p, generando: false, guardada: false })))
+    setPlanLoading(false)
+    setPlanDone(true)
+    setStep(3)
   }
 
+  // ─── GUARDAR CAMPAÑA ───────────────────────────────────────────────────────
   async function saveCampana(): Promise<string> {
+    if (savedId) return savedId
     setSaving(true)
-    const allOutput = fases.map(f => `\n\n## ${f.label}\n${f.output}`).join('')
     const res = await fetch('/api/campanas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        nombre: ctx.nombre, descripcion: ctx.descripcion,
-        fecha_inicio: ctx.fecha_inicio || null, fecha_fin: ctx.fecha_fin || null,
+        nombre: ctx.nombre,
+        descripcion: ctx.descripcion,
+        fecha_inicio: ctx.fecha_inicio || null,
+        fecha_fin: ctx.fecha_fin || null,
         presupuesto: parseFloat(ctx.presupuesto.replace(/\./g, '').replace(',', '.')) || null,
-        evento_relacionado: ctx.evento, objetivo: ctx.objetivo,
-        canales: ctx.canales, audiencia: ctx.audiencia, notas: ctx.notas,
-        output_claude: allOutput, estado: 'activa'
+        evento_relacionado: ctx.evento,
+        objetivo: ctx.objetivo,
+        canales: ctx.canales,
+        audiencia: ctx.audiencia,
+        notas: ctx.notas,
+        output_claude: `## Estrategia y narrativa\n${estrategia}\n\n## Plan de contenido\n${planRaw}`,
+        estado: 'activa'
       })
     })
     const d = await res.json()
@@ -452,39 +315,166 @@ export default function CampanasPage() {
     return d.id
   }
 
-  async function syncCalendario() {
-    setSyncing(true)
-    let cid = savedId
-    if (!cid) cid = await saveCampana()
-    if (!cid) { setSyncing(false); return }
+  // ─── GUARDAR PIEZAS EN CALENDARIO ─────────────────────────────────────────
+  async function guardarPiezasEnCalendario(campanaId: string) {
+    const piezasSinGuardar = piezas.filter(p => !p.guardada && !p.id)
+    if (piezasSinGuardar.length === 0) return
 
-    const cronogramaFase = fases.find(f => f.id === 'cronograma')
-    const guionesFase = fases.find(f => f.id === 'guiones')
+    const payload = piezasSinGuardar.map(p => ({
+      fecha: p.fecha,
+      canal: p.canal,
+      tipo_contenido: p.tipo_contenido,
+      titulo: p.titulo,
+      copy_exacto: p.copy_exacto || '',
+      guion: p.guion || '',
+      musica_sugerida: p.musica_sugerida || '',
+      referencia_visual: p.referencia_visual || '',
+      responsable: p.responsable,
+      estado: p.estado,
+      color: p.color,
+      campana_id: campanaId,
+    }))
 
-    if (!cronogramaFase?.output) { setSyncing(false); return }
+    const res = await fetch('/api/tareas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const data = await res.json()
 
-    const tareas = parseTareas(cronogramaFase.output, cid)
-
-    // Enriquecer con guiones si existen
-    if (guionesFase?.output) {
-      // Los guiones ya están en los copies del cronograma
-    }
-
-    if (tareas.length > 0) {
-      await fetch(`/api/tareas?campana_id=${cid}`, { method: 'DELETE' })
-      await fetch('/api/tareas', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tareas)
+    if (Array.isArray(data)) {
+      setPiezas(prev => {
+        let idx = 0
+        return prev.map(p => {
+          if (!p.guardada && !p.id) {
+            const saved = data[idx++]
+            return saved ? { ...p, id: saved.id, campana_id: campanaId, guardada: true } : p
+          }
+          return p
+        })
       })
-      setSyncCount(tareas.length)
     }
-
-    setSyncing(false)
-    setSyncDone(true)
   }
 
-  const fasesCompletadas = fases.filter(f => f.done).length
-  const todasListas = fases.length > 0 && fasesCompletadas === fases.length
+  // ─── GENERAR PIEZA INDIVIDUAL ──────────────────────────────────────────────
+  async function generarPieza(piezaIdx: number) {
+    const pieza = piezas[piezaIdx]
+    if (!pieza) return
+
+    // Guardar campaña si no está guardada
+    let cid = savedId
+    if (!cid) cid = await saveCampana()
+
+    // Guardar todas las piezas en calendario si no están guardadas
+    await guardarPiezasEnCalendario(cid)
+
+    // Contexto de lo ya generado ese día
+    const diaActual = piezas.filter(p => p.fecha === pieza.fecha && p.copy_exacto)
+    const contextoHoy = diaActual.length > 0
+      ? `\nOTRAS PIEZAS YA GENERADAS PARA ESTE DÍA:\n${diaActual.map(p => `- ${p.canal} | ${p.tipo_contenido}: ${p.titulo}`).join('\n')}\n`
+      : ''
+
+    setPiezas(prev => prev.map((p, i) => i === piezaIdx ? { ...p, generando: true } : p))
+
+    const prompt = `${getBase()}
+
+ESTRATEGIA DE LA CAMPAÑA:
+${estrategia}
+
+PIEZA A GENERAR:
+Fecha: ${pieza.fecha}
+Canal: ${pieza.canal}
+Tipo: ${pieza.tipo_contenido}
+Título: ${pieza.titulo}
+${contextoHoy}
+
+Genera el contenido COMPLETO y LISTO PARA EJECUTAR de esta pieza:
+
+COPY EXACTO:
+[Texto completo listo para publicar. Para email: asunto + cuerpo completo. Para WhatsApp: mensaje completo. Para redes: caption con hashtags. Para pauta: texto principal + titular + descripción]
+
+GUION:
+[Solo si es video/reel/ugc. Hook exacto (0-3s) → Desarrollo (4-25s) → CTA final. Si no aplica, dejar vacío]
+
+MUSICA:
+[Artista - Canción específica O género + mood. Ej: "Bad Bunny - Un Verano Sin Ti" o "EDM motivacional 128 BPM"]
+
+REFERENCIA VISUAL:
+[Locación exacta, vestuario, iluminación, ángulo de cámara, colores dominantes]
+
+RESPONSABLE:
+[David / Creadora / Comité]
+
+Todo debe estar 100% listo. La creadora o el trafficker deben poder ejecutar sin preguntar nada.`
+
+    const res = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
+    })
+
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += dec.decode(value)
+    }
+
+    // Parsear el output
+    const getField = (key: string) => {
+      const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-Z]+:|$)`, 'i'))
+      return match ? match[1].trim() : ''
+    }
+
+    const copy = getField('COPY EXACTO')
+    const guion = getField('GUION')
+    const musica = getField('MUSICA')
+    const referencia = getField('REFERENCIA VISUAL')
+    const responsable = getField('RESPONSABLE') || 'David'
+
+    // Actualizar en Supabase si ya tiene ID
+    const piezaActual = piezas[piezaIdx]
+    if (piezaActual.id) {
+      await fetch('/api/tareas', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: piezaActual.id,
+          copy_exacto: copy,
+          guion: guion,
+          musica_sugerida: musica,
+          referencia_visual: referencia,
+          responsable: responsable,
+          estado: 'pendiente',
+        })
+      })
+    }
+
+    setPiezas(prev => prev.map((p, i) => i === piezaIdx ? {
+      ...p,
+      copy_exacto: copy,
+      guion: guion,
+      musica_sugerida: musica,
+      referencia_visual: referencia,
+      responsable: responsable,
+      generando: false,
+      guardada: true,
+    } : p))
+  }
+
+  // ─── GENERAR TODAS LAS PIEZAS DE UN DÍA ───────────────────────────────────
+  async function generarDia(fecha: string) {
+    const indices = piezas
+      .map((p, i) => ({ p, i }))
+      .filter(({ p }) => p.fecha === fecha && !p.copy_exacto)
+      .map(({ i }) => i)
+
+    for (const idx of indices) {
+      await generarPieza(idx)
+    }
+  }
+
+  const diasAgrupados = agruparPorDia(piezas)
+  const piezasGeneradas = piezas.filter(p => p.copy_exacto).length
 
   // ─── VISTA LISTA ────────────────────────────────────────────────────────────
   if (view === 'list') return (
@@ -494,7 +484,7 @@ export default function CampanasPage() {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a18', margin: 0 }}>Campañas</h1>
           <p style={{ fontSize: 13, color: '#6b6a63', margin: '4px 0 0' }}>{campanas.length} campaña{campanas.length !== 1 ? 's' : ''} guardadas</p>
         </div>
-        <button onClick={() => { setView('builder'); setStep(0); setFases([]); setSavedId(null); setSyncDone(false) }}
+        <button onClick={() => { setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setPiezas([]); setSavedId(null) }}
           style={{ padding: '10px 20px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           + Nueva campaña
         </button>
@@ -533,7 +523,7 @@ export default function CampanasPage() {
                 </Link>
                 <button onClick={() => { setSelectedCampana(c); setView('detail') }}
                   style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#e6f1fb', color: '#185fa5', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <Eye size={12} /> Ver estrategia
+                  <Eye size={12} /> Ver
                 </button>
                 <button onClick={async () => { await fetch(`/api/campanas?id=${c.id}`, { method: 'DELETE' }); fetchCampanas() }}
                   style={{ padding: '7px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>
@@ -549,7 +539,7 @@ export default function CampanasPage() {
 
   // ─── VISTA DETALLE ───────────────────────────────────────────────────────────
   if (view === 'detail' && selectedCampana) {
-    const sections = (selectedCampana as Campana & { output_claude?: string }).output_claude?.split(/^## /m).filter(Boolean) || []
+    const sections = selectedCampana.output_claude?.split(/^## /m).filter(Boolean) || []
     return (
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -557,7 +547,7 @@ export default function CampanasPage() {
           <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', margin: 0, flex: 1 }}>{selectedCampana.nombre}</h1>
           <Link href={`/tareas?campana_id=${selectedCampana.id}`}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#1a1a18', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
-            <Calendar size={13} /> Ver tareas en calendario
+            <Calendar size={13} /> Ver tareas
           </Link>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
@@ -577,12 +567,12 @@ export default function CampanasPage() {
           const content = rest.join('\n').trim()
           return (
             <div key={i} style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 8 }}>
-              <button onClick={() => setOpenFase(openFase === title ? null : title)}
+              <button onClick={() => setOpenDia(openDia === title ? null : title)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{title}</span>
-                {openFase === title ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                {openDia === title ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
               </button>
-              {openFase === title && (
+              {openDia === title && (
                 <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                   {content}
                 </div>
@@ -594,7 +584,7 @@ export default function CampanasPage() {
     )
   }
 
-  // ─── VISTA BUILDER ────────────────────────────────────────────────────────────
+  // ─── VISTA BUILDER ─────────────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -602,13 +592,17 @@ export default function CampanasPage() {
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a18', margin: 0 }}>
           {step === 0 ? 'Nueva campaña' : ctx.nombre}
         </h1>
+        {savedId && (
+          <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+            Guardada
+          </span>
+        )}
       </div>
 
       {/* STEP 0: FORMULARIO */}
       {step === 0 && (
         <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 12, padding: 28 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>Nombre de la campaña *</label>
@@ -702,117 +696,234 @@ export default function CampanasPage() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
-              <button onClick={startBuilder}
+              <button
+                onClick={() => { setStep(1); generarEstrategia() }}
                 disabled={!ctx.nombre || !ctx.fecha_inicio || !ctx.fecha_fin}
                 style={{ padding: '12px 28px', background: ctx.nombre && ctx.fecha_inicio && ctx.fecha_fin ? '#1a1a18' : '#c0bfb5', color: '#fff', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 700, cursor: ctx.nombre && ctx.fecha_inicio && ctx.fecha_fin ? 'pointer' : 'default', fontFamily: 'inherit' }}>
-                Generar estrategia completa →
+                Generar estrategia →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* STEP 1: FASES */}
-      {step === 1 && (
-        <div>
-          {/* Progress bar */}
-          <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 12, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{ctx.nombre}</div>
-              <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 2 }}>{ctx.fecha_inicio} → {ctx.fecha_fin} · {fasesCompletadas}/{fases.length} fases completadas</div>
-              <div style={{ height: 4, background: '#f0efe8', borderRadius: 2, marginTop: 8, width: 200, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: '#1a1a18', borderRadius: 2, width: `${(fasesCompletadas / fases.length) * 100}%`, transition: 'width .3s' }} />
+      {/* STEPS 1-3: GENERACIÓN */}
+      {step >= 1 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+          {/* FASE 1 — ESTRATEGIA */}
+          <div style={{ background: '#fff', border: `1px solid ${estrategiaDone ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', gap: 12 }}>
+              <span style={{ fontSize: 20 }}>🎯</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>Estrategia y narrativa</div>
+                <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>Concepto creativo, posicionamiento y narrativa de la campaña</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {estrategiaDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> Completada</span>}
+                {!estrategiaLoading && (
+                  <button onClick={generarEstrategia}
+                    style={{ padding: '7px 14px', background: estrategiaDone ? '#f0efe8' : '#1a1a18', color: estrategiaDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {estrategiaDone ? '↻ Regenerar' : '✦ Generar'}
+                  </button>
+                )}
+                {estrategia && (
+                  <button onClick={() => setOpenEstrategia(!openEstrategia)}
+                    style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>
+                    {openEstrategia ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {!todasListas && (
-                <button onClick={generarTodas}
-                  style={{ padding: '9px 16px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  ✦ Generar todo automáticamente
-                </button>
-              )}
-              {!savedId && fasesCompletadas > 0 && (
-                <button onClick={saveCampana} disabled={saving}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  Guardar campaña
-                </button>
-              )}
-              {savedId && !syncDone && (
-                <button onClick={syncCalendario} disabled={syncing}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#185fa5', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {syncing ? <Loader2 size={13} className="animate-spin" /> : <Calendar size={13} />}
-                  {syncing ? 'Sincronizando...' : 'Poner en calendario'}
-                </button>
-              )}
-              {syncDone && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#dcfce7', color: '#15803d', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
-                  <Check size={13} /> {syncCount} tareas en calendario
-                </div>
-              )}
-              {savedId && (
-                <Link href="/tareas" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: '#f0efe8', color: '#1a1a18', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
-                  Ver tareas →
-                </Link>
-              )}
-            </div>
+            {estrategiaLoading && (
+              <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}>
+                <Loader2 size={14} className="animate-spin" /> Generando estrategia...
+              </div>
+            )}
+            {estrategia && openEstrategia && (
+              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#1a1a18', lineHeight: 1.8, whiteSpace: 'pre-wrap', maxHeight: 500, overflowY: 'auto' }}>
+                {estrategia}
+              </div>
+            )}
+            {estrategia && !openEstrategia && !estrategiaLoading && (
+              <div style={{ padding: '0 20px 12px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#9c9a92', overflow: 'hidden', maxHeight: 36, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                {estrategia.slice(0, 150)}...
+              </div>
+            )}
           </div>
 
-          {/* Fases */}
-          {fases.map(fase => (
-            <div key={fase.id} style={{ background: '#fff', border: `1px solid ${fase.done ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden', marginBottom: 10 }}>
-              {/* Header de fase */}
+          {/* FASE 2 — PLAN DE CONTENIDO */}
+          {estrategiaDone && (
+            <div style={{ background: '#fff', border: `1px solid ${planDone ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', gap: 12 }}>
-                <span style={{ fontSize: 20, flexShrink: 0 }}>{fase.emoji}</span>
+                <span style={{ fontSize: 20 }}>📋</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{fase.label}</div>
-                  <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>{fase.descripcion}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>Plan de contenido</div>
+                  <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>El CMO decide qué publicar, cuándo y en qué canal</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {fase.done && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#15803d' }}><Check size={13} /> Completado</div>}
-                  {!fase.loading && (
-                    <button onClick={() => generarFase(fase.id)}
-                      style={{ padding: '7px 14px', background: fase.done ? '#f0efe8' : '#1a1a18', color: fase.done ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      {fase.done ? '↻ Regenerar' : '✦ Generar'}
+                  {planDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> {piezas.length} piezas</span>}
+                  {!planLoading && (
+                    <button onClick={generarPlan}
+                      style={{ padding: '7px 14px', background: planDone ? '#f0efe8' : '#1a1a18', color: planDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {planDone ? '↻ Regenerar' : '✦ Generar plan'}
                     </button>
                   )}
-                  {fase.output && (
-                    <button onClick={() => setOpenFase(openFase === fase.id ? null : fase.id)}
+                  {planRaw && (
+                    <button onClick={() => setOpenPlan(!openPlan)}
                       style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>
-                      {openFase === fase.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      {openPlan ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
                   )}
                 </div>
               </div>
-
-              {/* Loading */}
-              {fase.loading && (
+              {planLoading && (
                 <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}>
-                  <Loader2 size={14} className="animate-spin" /> Generando {fase.label.toLowerCase()}...
+                  <Loader2 size={14} className="animate-spin" /> El CMO está planificando el contenido...
                 </div>
               )}
-
-              {/* Output */}
-              {fase.output && openFase === fase.id && (
-                <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#1a1a18', lineHeight: 1.8, whiteSpace: 'pre-wrap', maxHeight: 600, overflowY: 'auto' }}>
-                  {fase.output}
-                </div>
-              )}
-
-              {/* Preview cerrado */}
-              {fase.output && openFase !== fase.id && !fase.loading && (
-                <div style={{ padding: '0 20px 12px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#9c9a92', overflow: 'hidden', maxHeight: 36, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                  {fase.output.slice(0, 150)}...
+              {planRaw && openPlan && (
+                <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#1a1a18', lineHeight: 2, whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto', fontFamily: 'monospace' }}>
+                  {planRaw}
                 </div>
               )}
             </div>
-          ))}
+          )}
+
+          {/* FASE 3 — PIEZAS POR DÍA */}
+          {planDone && piezas.length > 0 && (
+            <div>
+              {/* Header resumen */}
+              <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, padding: '14px 20px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 13, color: '#6b6a63' }}>
+                  <span style={{ fontWeight: 700, color: '#1a1a18' }}>{piezasGeneradas}</span> de <span style={{ fontWeight: 700, color: '#1a1a18' }}>{piezas.length}</span> piezas generadas
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {!savedId && (
+                    <button onClick={saveCampana} disabled={saving}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      Guardar campaña
+                    </button>
+                  )}
+                  {savedId && (
+                    <Link href="/tareas"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>
+                      <Calendar size={12} /> Ver en calendario
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* Días */}
+              {diasAgrupados.map(({ fecha, piezas: piezasDia }) => {
+                const todasGeneradas = piezasDia.every(p => p.copy_exacto)
+                const algunaGenerando = piezasDia.some(p => p.generando)
+                const isOpen = openDia === fecha
+
+                return (
+                  <div key={fecha} style={{ background: '#fff', border: `1px solid ${todasGeneradas ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden', marginBottom: 8 }}>
+                    {/* Header día */}
+                    <div style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', gap: 12 }}>
+                      <button onClick={() => setOpenDia(isOpen ? null : fecha)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#9c9a92' }}>
+                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                      <div style={{ flex: 1 }} onClick={() => setOpenDia(isOpen ? null : fecha)} role="button" style={{ flex: 1, cursor: 'pointer' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18', textTransform: 'capitalize' }}>{formatFecha(fecha)}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          {piezasDia.map((p, i) => (
+                            <span key={i} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: p.copy_exacto ? '#dcfce7' : '#f0efe8', color: p.copy_exacto ? '#15803d' : '#6b6a63', fontWeight: 600 }}>
+                              {p.canal} · {p.tipo_contenido}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {todasGeneradas && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> Listo</span>}
+                        {!algunaGenerando && (
+                          <button onClick={() => generarDia(fecha)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: todasGeneradas ? '#f0efe8' : '#1a1a18', color: todasGeneradas ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <Sparkles size={12} />
+                            {todasGeneradas ? 'Regenerar día' : 'Generar día'}
+                          </button>
+                        )}
+                        {algunaGenerando && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#185fa5' }}>
+                            <Loader2 size={13} className="animate-spin" /> Generando...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Piezas del día */}
+                    {isOpen && (
+                      <div style={{ borderTop: '1px solid #f0efe8' }}>
+                        {piezasDia.map((pieza, piezaIdx) => {
+                          const globalIdx = piezas.findIndex(p => p === pieza)
+                          const piezaKey = `${fecha}-${piezaIdx}`
+                          const isOpenPieza = openPieza === piezaKey
+
+                          return (
+                            <div key={piezaIdx} style={{ borderBottom: piezaIdx < piezasDia.length - 1 ? '1px solid #f0efe8' : 'none' }}>
+                              {/* Header pieza */}
+                              <div style={{ display: 'flex', alignItems: 'center', padding: '10px 20px 10px 44px', gap: 10 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: pieza.color, flexShrink: 0 }} />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a18' }}>{pieza.titulo}</div>
+                                  <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>{pieza.canal} · {pieza.tipo_contenido}</div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {pieza.copy_exacto && (
+                                    <button onClick={() => setOpenPieza(isOpenPieza ? null : piezaKey)}
+                                      style={{ fontSize: 11, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                                      {isOpenPieza ? 'Cerrar' : 'Ver contenido'}
+                                    </button>
+                                  )}
+                                  {!pieza.generando && (
+                                    <button onClick={() => generarPieza(globalIdx)}
+                                      style={{ padding: '5px 10px', background: pieza.copy_exacto ? '#f0efe8' : '#1a1a18', color: pieza.copy_exacto ? '#6b6a63' : '#fff', border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                      {pieza.copy_exacto ? '↻ Regenerar' : '✦ Generar'}
+                                    </button>
+                                  )}
+                                  {pieza.generando && <Loader2 size={13} className="animate-spin" style={{ color: '#185fa5' }} />}
+                                </div>
+                              </div>
+
+                              {/* Contenido de la pieza */}
+                              {isOpenPieza && pieza.copy_exacto && (
+                                <div style={{ padding: '12px 20px 16px 44px', background: '#f9f8f4', borderTop: '1px solid #f0efe8' }}>
+                                  {[
+                                    { label: 'Copy exacto', value: pieza.copy_exacto },
+                                    { label: 'Guión', value: pieza.guion },
+                                    { label: 'Música sugerida', value: pieza.musica_sugerida },
+                                    { label: 'Referencia visual', value: pieza.referencia_visual },
+                                  ].filter(f => f.value).map(field => (
+                                    <div key={field.label} style={{ marginBottom: 12 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9c9a92', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{field.label}</div>
+                                      <div style={{ fontSize: 12, color: '#1a1a18', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e0dfd5', borderRadius: 7, padding: '8px 12px' }}>
+                                        {field.value}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <div style={{ fontSize: 11, color: '#9c9a92' }}>Responsable: <strong>{pieza.responsable}</strong></div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// Estilos reutilizables
 const lbl: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: '#6b6a63', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #c0bfb5', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff', color: '#1a1a18' }
