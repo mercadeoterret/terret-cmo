@@ -77,6 +77,9 @@ export default function CampanasPage() {
   const [planDone, setPlanDone] = useState(false)
   const [openPlan, setOpenPlan] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [showModoModal, setShowModoModal] = useState(false)
+  const [investigando, setInvestigando] = useState(false)
+  const [investigacionLog, setInvestigacionLog] = useState('')
   const [syncCount, setSyncCount] = useState(0)
 
   // Generación de piezas
@@ -86,6 +89,37 @@ export default function CampanasPage() {
   const estrategiaRef = useRef('')
 
   useEffect(() => { fetchCampanas() }, [])
+
+  async function investigarYGenerar() {
+    setInvestigando(true)
+    setShowModoModal(false)
+    setView('builder')
+    setStep(1)
+    setInvestigacionLog('Investigando tendencias y oportunidades...')
+    try {
+      const res = await fetch('/api/investigar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual: true })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setInvestigacionLog(`✓ Campaña "${data.campana_nombre}" creada con ${data.piezas} piezas`)
+        await fetchCampanas()
+        setTimeout(() => {
+          setInvestigando(false)
+          setInvestigacionLog('')
+          setView('list')
+        }, 2000)
+      } else {
+        setInvestigacionLog(`Error: ${data.error}`)
+        setInvestigando(false)
+      }
+    } catch (e) {
+      setInvestigacionLog(`Error: ${String(e)}`)
+      setInvestigando(false)
+    }
+  }
 
   async function fetchCampanas() {
     const r = await fetch('/api/campanas')
@@ -376,7 +410,7 @@ RESPONSABLE:
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a18', margin: 0 }}>Campañas</h1>
           <p style={{ fontSize: 13, color: '#6b6a63', margin: '4px 0 0' }}>{campanas.length} campaña{campanas.length !== 1 ? 's' : ''} guardadas</p>
         </div>
-        <button onClick={() => { setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setSavedId(null); setSyncCount(0) }}
+        <button onClick={() => setShowModoModal(true)}
           style={{ padding: '10px 20px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           + Nueva campaña
         </button>
@@ -412,6 +446,36 @@ RESPONSABLE:
               </div>
             </div>
           ))}
+        </div>
+      )}
+    {showModoModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }} onClick={() => setShowModoModal(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', marginBottom: 8 }}>Nueva campaña</div>
+            <div style={{ fontSize: 13, color: '#6b6a63', marginBottom: 24 }}>¿Cómo quieres crear esta campaña?</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button onClick={() => { setShowModoModal(false); setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setSavedId(null); setSyncCount(0) }}
+                style={{ padding: '18px 20px', background: '#f9f8f4', border: '1.5px solid #e0dfd5', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a18', marginBottom: 4 }}>✏️ Crear manualmente</div>
+                <div style={{ fontSize: 12, color: '#6b6a63' }}>Tú defines el nombre, fechas, objetivo y canales. El CMO genera la estrategia y el plan.</div>
+              </button>
+              <button onClick={investigarYGenerar}
+                style={{ padding: '18px 20px', background: '#1a1a18', border: 'none', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginBottom: 4 }}>🔍 Investigar y generar automáticamente</div>
+                <div style={{ fontSize: 12, color: '#9c9a92' }}>El CMO investiga tendencias, carreras próximas y oportunidades en web, y crea la campaña solo.</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {investigando && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 40, textAlign: 'center', maxWidth: 400 }}>
+            <div style={{ fontSize: 32, marginBottom: 16 }}>🔍</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a18', marginBottom: 8 }}>El CMO está investigando...</div>
+            <div style={{ fontSize: 13, color: '#6b6a63', lineHeight: 1.6 }}>{investigacionLog}</div>
+          </div>
         </div>
       )}
     </div>
