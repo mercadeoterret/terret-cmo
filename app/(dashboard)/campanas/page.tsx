@@ -241,7 +241,7 @@ Reglas:
       seen.add(key)
       payload.push({
         fecha: fecha.trim(), canal: canal.trim(), tipo_contenido: tipo.trim(),
-        titulo: titulo.trim(), copy_exacto: '', guion: '', musica_sugerida: '',
+        titulo: titulo.trim(), tipo: 'contenido', copy_exacto: '', guion: '', musica_sugerida: '',
         referencia_visual: '', responsable: 'David', estado: 'pendiente',
         color: CANAL_COLORS[canal.trim()] || '#185fa5', campana_id: cid,
       })
