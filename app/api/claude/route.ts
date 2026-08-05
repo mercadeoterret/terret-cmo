@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const kpis = kpisData || {}
     const brandKnowledge = (brandData || []).map((b: { contenido: string }) => b.contenido)
     const system = buildSystemPrompt(kpis, brandKnowledge)
-    const maxTokens = mode === 'campana' ? 4000 : 2000
+    const maxTokens = mode === 'campana' ? 2000 : 1000
     const stream = await anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system, messages })
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
