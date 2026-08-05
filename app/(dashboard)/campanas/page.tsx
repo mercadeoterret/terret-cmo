@@ -401,7 +401,7 @@ RESPONSABLE:
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <button onClick={() => setView('list')} style={{ fontSize: 12, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>← Campañas</button>
           <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', margin: 0, flex: 1 }}>{selectedCampana.nombre}</h1>
-          <Link href="/calendario" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+          <Link href="/calendario" target="_blank" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
             <Calendar size={13} /> Ver en calendario
           </Link>
         </div>
@@ -444,7 +444,8 @@ RESPONSABLE:
           </div>
         ) : totalPiezas === 0 ? (
           <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 13, color: '#9c9a92' }}>Esta campaña no tiene piezas en el calendario aún.</div>
+            <div style={{ fontSize: 13, color: '#9c9a92', marginBottom: 16 }}>Esta campaña no tiene piezas en el calendario aún.</div>
+            <button onClick={() => { setView('builder'); setStep(1); setEstrategiaDone(true); setEstrategia(selectedCampana?.output_claude || ''); estrategiaRef.current = selectedCampana?.output_claude || '' }} style={{ padding: '9px 18px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Generar plan de contenido →</button>
           </div>
         ) : (
           dias.map(({ fecha, piezas }) => {
