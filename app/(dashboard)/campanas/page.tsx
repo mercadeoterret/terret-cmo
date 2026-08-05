@@ -309,6 +309,7 @@ RESPONSABLE:
       text += dec.decode(value)
     }
 
+    console.log('CLAUDE OUTPUT PRIMEROS 500 CHARS:', text.substring(0, 500))
     const getField = (key: string) => {
       const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i'))
       const val = match ? match[1].trim() : ''
