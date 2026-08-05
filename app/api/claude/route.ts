@@ -1,3 +1,5 @@
+export const maxDuration = 300
+
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
