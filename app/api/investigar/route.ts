@@ -106,7 +106,7 @@ Luego genera la estrategia completa:
       nombre: `Campaña Terret — ${today.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}`,
       descripcion: 'Generada automáticamente por el CMO',
       fecha_inicio: todayStr,
-      fecha_fin: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      fecha_fin: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // max 8 días
       objetivo: 'Ventas directas — maximizar ROAS',
       evento_relacionado: '',
       canales: ['Meta Ads', 'Instagram orgánico', 'Email marketing'],
