@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { Loader2, ChevronDown, ChevronRight, Check, Calendar, Save, Trash2, Eye } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, ChevronDown, ChevronRight, Check, Calendar, Trash2, Sparkles, X } from 'lucide-react'
 import Link from 'next/link'
 
 interface CampanaCtx {
@@ -12,11 +12,17 @@ interface Campana {
   id: string; nombre: string; estado: string; fecha_inicio: string
   fecha_fin: string; objetivo: string; created_at: string; output_claude?: string
 }
+interface Pieza {
+  id: string; fecha: string; canal: string; tipo_contenido: string; titulo: string
+  copy_exacto?: string; guion?: string; musica_sugerida?: string
+  referencia_visual?: string; responsable?: string; estado: string; color?: string
+}
 
 const CANAL_COLORS: Record<string, string> = {
-  'Instagram': '#e040fb', 'TikTok': '#00bcd4', 'Meta Ads': '#1877f2',
-  'Google Ads': '#4285f4', 'Email': '#15803d', 'WhatsApp': '#25d366',
-  'Offline': '#b45309', 'Stories': '#e040fb',
+  'Instagram': '#e040fb', 'Instagram orgánico': '#e040fb', 'TikTok': '#00bcd4',
+  'TikTok orgánico': '#00bcd4', 'Meta Ads': '#1877f2', 'Google Ads': '#4285f4',
+  'Email': '#15803d', 'Email marketing': '#15803d', 'WhatsApp': '#25d366',
+  'WhatsApp / estados': '#25d366', 'Influencers / UGC': '#f59e0b',
 }
 
 const EVENTOS = [
@@ -32,21 +38,28 @@ const EVENTOS = [
   { value: 'hotsale2', label: 'Hot Sale Colombia 2ª ed. — 20-24 oct 2026' },
 ]
 
-function parsePlan(texto: string) {
-  const piezas: { fecha: string; canal: string; tipo_contenido: string; titulo: string }[] = []
-  for (const linea of texto.split(/\n|(?=\d{4}-\d{2}-\d{2}\s*\|)/)) {
-    const match = linea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"\n]+)"?/)
-    if (!match) continue
-    const [, fecha, canal, tipo, titulo] = match
-    piezas.push({ fecha: fecha.trim(), canal: canal.trim(), tipo_contenido: tipo.trim(), titulo: titulo.trim() })
+function formatFecha(fecha: string) {
+  const d = new Date(fecha + 'T12:00:00')
+  return d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+function agruparPorDia(piezas: Pieza[]) {
+  const map: Record<string, Pieza[]> = {}
+  for (const p of piezas) {
+    if (!map[p.fecha]) map[p.fecha] = []
+    map[p.fecha].push(p)
   }
-  return piezas
+  return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([fecha, piezas]) => ({ fecha, piezas }))
 }
 
 export default function CampanasPage() {
   const [view, setView] = useState<'list' | 'builder' | 'detail'>('list')
   const [campanas, setCampanas] = useState<Campana[]>([])
   const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null)
+  const [detailPiezas, setDetailPiezas] = useState<Pieza[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  // Builder
   const [step, setStep] = useState(0)
   const [ctx, setCtx] = useState<CampanaCtx>({
     nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '',
@@ -64,10 +77,13 @@ export default function CampanasPage() {
   const [planDone, setPlanDone] = useState(false)
   const [openPlan, setOpenPlan] = useState(false)
   const [savedId, setSavedId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [syncDone, setSyncDone] = useState(false)
   const [syncCount, setSyncCount] = useState(0)
-  const [syncing, setSyncing] = useState(false)
+
+  // Generación de piezas
+  const [generandoId, setGenerandoId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const savedIdRef = useRef<string | null>(null)
+  const estrategiaRef = useRef('')
 
   useEffect(() => { fetchCampanas() }, [])
 
@@ -75,6 +91,14 @@ export default function CampanasPage() {
     const r = await fetch('/api/campanas')
     const d = await r.json()
     setCampanas(Array.isArray(d) ? d : [])
+  }
+
+  async function fetchDetailPiezas(campanaId: string) {
+    setDetailLoading(true)
+    const r = await fetch(`/api/tareas?campana_id=${campanaId}`)
+    const d = await r.json()
+    setDetailPiezas(Array.isArray(d) ? d : [])
+    setDetailLoading(false)
   }
 
   function toggleArr(arr: string[], v: string) {
@@ -139,7 +163,8 @@ Genera la ESTRATEGIA COMPLETA de la campaña:
 (Qué están haciendo otros y cómo nos diferenciamos)
 
 Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.`
-    await streamClaude(prompt, setEstrategia)
+    const text = await streamClaude(prompt, setEstrategia)
+    estrategiaRef.current = text
     setEstrategiaLoading(false)
     setEstrategiaDone(true)
   }
@@ -149,39 +174,9 @@ Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.
     setPlanRaw('')
     setPlanDone(false)
     setOpenPlan(true)
-    const prompt = `${getBase()}
+    setSyncCount(0)
 
-ESTRATEGIA DE LA CAMPAÑA:
-${estrategia}
-
-Eres el Director de Marketing de Terret. Decide el plan de contenido completo para esta campaña.
-
-Para cada día del período (${ctx.fecha_inicio} al ${ctx.fecha_fin}), decide qué piezas de contenido se van a producir y publicar.
-
-FORMATO OBLIGATORIO — una línea por pieza, exactamente así:
-YYYY-MM-DD | Canal | Tipo | "Título de la pieza"
-
-Canales disponibles: ${ctx.canales.join(', ')}
-Tipos posibles: Reel, Carrusel, Story, Post, Video UGC, Email, Estado WhatsApp, Pauta Meta, Pauta Google, Pauta TikTok, Contenido Offline
-
-Reglas:
-- Un día puede tener múltiples piezas en diferentes canales
-- No expliques por qué — solo el plan
-- No saltes ningún día del período
-- El título debe ser descriptivo y específico
-
-Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni después.`
-    const text = await streamClaude(prompt, setPlanRaw)
-    setPlanLoading(false)
-    setPlanDone(true)
-
-    // Guardar campaña y piezas inmediatamente
-    await guardarCampanaYPiezas(text)
-  }
-
-  async function guardarCampanaYPiezas(planTexto: string) {
-    setSaving(true)
-    // 1. Guardar campaña
+    // 1. Guardar campaña primero
     const res = await fetch('/api/campanas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -190,47 +185,185 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
         presupuesto: parseFloat(ctx.presupuesto.replace(/\./g, '').replace(',', '.')) || null,
         evento_relacionado: ctx.evento, objetivo: ctx.objetivo,
         canales: ctx.canales, audiencia: ctx.audiencia, notas: ctx.notas,
-        output_claude: `## Estrategia y narrativa\n${estrategia}\n\n## Plan de contenido\n${planTexto}`,
+        output_claude: `## Estrategia y narrativa\n${estrategiaRef.current}`,
         estado: 'activa'
       })
     })
     const campana = await res.json()
     const cid = campana.id
     setSavedId(cid)
-    setSaving(false)
+    savedIdRef.current = cid
 
-    // 2. Parsear y guardar piezas vacías en calendario_eventos
-    const piezas = parsePlan(planTexto)
-    if (piezas.length === 0) return
+    const prompt = `${getBase()}
 
-    setSyncing(true)
-    const payload = piezas.map(p => ({
-      fecha: p.fecha,
-      canal: p.canal,
-      tipo_contenido: p.tipo_contenido,
-      titulo: p.titulo,
-      copy_exacto: '',
-      guion: '',
-      musica_sugerida: '',
-      referencia_visual: '',
-      responsable: 'David',
-      estado: 'pendiente',
-      color: CANAL_COLORS[p.canal] || '#185fa5',
-      campana_id: cid,
-    }))
+ESTRATEGIA DE LA CAMPAÑA:
+${estrategiaRef.current}
 
-    await fetch('/api/tareas', {
+Eres el Director de Marketing de Terret. Decide el plan de contenido completo para esta campaña.
+
+FORMATO OBLIGATORIO — una línea por pieza, exactamente así:
+YYYY-MM-DD | Canal | Tipo | "Título de la pieza"
+
+Canales disponibles: ${ctx.canales.join(', ')}
+Tipos posibles: Reel, Carrusel, Story, Post, Video UGC, Email, Estado WhatsApp, Pauta Meta, Pauta Google, Pauta TikTok
+
+Reglas:
+- Un día puede tener múltiples piezas
+- No saltes ningún día del período (${ctx.fecha_inicio} al ${ctx.fecha_fin})
+- El título debe ser descriptivo y específico
+- Responde ÚNICAMENTE con las líneas del plan, sin texto adicional`
+
+    // 2. Stream del plan e insertar piezas en tiempo real
+    const insertedTitles = new Set<string>()
+    let buffer = ''
+    let count = 0
+
+    const res2 = await fetch('/api/claude', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
     })
+    const reader = res2.body!.getReader()
+    const dec = new TextDecoder()
 
-    setSyncCount(piezas.length)
-    setSyncing(false)
-    setSyncDone(true)
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += dec.decode(value)
+      setPlanRaw(buffer)
+
+      // Procesar líneas completas
+      const lineas = buffer.split('\n')
+      for (let i = 0; i < lineas.length - 1; i++) {
+        const linea = lineas[i].trim()
+        const match = linea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"]+)"?/)
+        if (!match) continue
+        const [, fecha, canal, tipo, titulo] = match
+        const key = `${fecha}|${canal.trim()}|${titulo.trim()}`
+        if (insertedTitles.has(key)) continue
+        insertedTitles.add(key)
+
+        // Insert inmediato
+        fetch('/api/tareas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fecha: fecha.trim(),
+            canal: canal.trim(),
+            tipo_contenido: tipo.trim(),
+            titulo: titulo.trim(),
+            copy_exacto: '', guion: '', musica_sugerida: '', referencia_visual: '',
+            responsable: 'David', estado: 'pendiente',
+            color: CANAL_COLORS[canal.trim()] || '#185fa5',
+            campana_id: cid,
+          })
+        })
+        count++
+        setSyncCount(count)
+      }
+    }
+
+    // Procesar última línea
+    const ultimaLinea = buffer.split('\n').pop()?.trim() || ''
+    const match = ultimaLinea.match(/(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*"?([^"]+)"?/)
+    if (match) {
+      const [, fecha, canal, tipo, titulo] = match
+      const key = `${fecha}|${canal.trim()}|${titulo.trim()}`
+      if (!insertedTitles.has(key)) {
+        fetch('/api/tareas', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fecha: fecha.trim(), canal: canal.trim(), tipo_contenido: tipo.trim(),
+            titulo: titulo.trim(), copy_exacto: '', guion: '', musica_sugerida: '',
+            referencia_visual: '', responsable: 'David', estado: 'pendiente',
+            color: CANAL_COLORS[canal.trim()] || '#185fa5', campana_id: cid,
+          })
+        })
+        count++
+        setSyncCount(count)
+      }
+    }
+
+    setPlanLoading(false)
+    setPlanDone(true)
     fetchCampanas()
   }
 
-  const [openSection, setOpenSection] = useState<string | null>(null)
+  async function generarContenidoPieza(pieza: Pieza, estrategiaTexto: string) {
+    setGenerandoId(pieza.id)
+
+    const otrasHoy = detailPiezas
+      .filter(p => p.fecha === pieza.fecha && p.id !== pieza.id && p.copy_exacto)
+      .map(p => `- ${p.canal} | ${p.tipo_contenido}: ${p.titulo}`)
+      .join('\n')
+
+    const prompt = `Eres el Director de Marketing de Terret, marca colombiana de accesorios para running.
+${estrategiaTexto ? `\nESTRATEGIA DE LA CAMPAÑA:\n${estrategiaTexto}\n` : ''}
+PIEZA A GENERAR:
+Fecha: ${pieza.fecha}
+Canal: ${pieza.canal}
+Tipo: ${pieza.tipo_contenido}
+Título: ${pieza.titulo}
+${otrasHoy ? `\nOTRAS PIEZAS YA GENERADAS PARA ESTE DÍA (no repetir):\n${otrasHoy}\n` : ''}
+Genera el contenido COMPLETO y LISTO PARA EJECUTAR:
+
+COPY EXACTO:
+[Texto completo listo para publicar. Para email: asunto + cuerpo. Para WhatsApp: mensaje completo. Para redes: caption con hashtags. Para pauta: texto principal + titular + descripción]
+
+GUION:
+[Solo si es video/reel/ugc: Hook (0-3s) → Desarrollo (4-25s) → CTA. Si no aplica: N/A]
+
+MUSICA:
+[Artista - Canción O género + mood específico]
+
+REFERENCIA VISUAL:
+[Locación, vestuario, iluminación, ángulo de cámara]
+
+RESPONSABLE:
+[David / Creadora / Comité]`
+
+    const res = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
+    })
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += dec.decode(value)
+    }
+
+    const getField = (key: string) => {
+      const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i'))
+      const val = match ? match[1].trim() : ''
+      return val === 'N/A' ? '' : val
+    }
+
+    const updates = {
+      id: pieza.id,
+      copy_exacto: getField('COPY EXACTO'),
+      guion: getField('GUION'),
+      musica_sugerida: getField('MUSICA'),
+      referencia_visual: getField('REFERENCIA VISUAL'),
+      responsable: getField('RESPONSABLE') || pieza.responsable || 'David',
+    }
+
+    await fetch('/api/tareas', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    })
+
+    setDetailPiezas(prev => prev.map(p => p.id === pieza.id ? { ...p, ...updates } : p))
+    setExpandedId(pieza.id)
+    setGenerandoId(null)
+  }
+
+  async function generarDia(fecha: string, estrategiaTexto: string) {
+    const sinContenido = detailPiezas.filter(p => p.fecha === fecha && !p.copy_exacto)
+    for (const pieza of sinContenido) {
+      await generarContenidoPieza(pieza, estrategiaTexto)
+    }
+  }
 
   // ─── VISTA LISTA ────────────────────────────────────────────────────────────
   if (view === 'list') return (
@@ -240,7 +373,7 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1a1a18', margin: 0 }}>Campañas</h1>
           <p style={{ fontSize: 13, color: '#6b6a63', margin: '4px 0 0' }}>{campanas.length} campaña{campanas.length !== 1 ? 's' : ''} guardadas</p>
         </div>
-        <button onClick={() => { setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setSavedId(null); setSyncDone(false) }}
+        <button onClick={() => { setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setSavedId(null); setSyncCount(0) }}
           style={{ padding: '10px 20px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           + Nueva campaña
         </button>
@@ -250,10 +383,7 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
           <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a18', marginBottom: 6 }}>Sin campañas aún</div>
           <div style={{ fontSize: 13, color: '#9c9a92', marginBottom: 20 }}>Crea tu primera campaña y el CMO genera toda la estrategia.</div>
-          <button onClick={() => { setView('builder'); setStep(0) }}
-            style={{ padding: '10px 20px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Crear primera campaña
-          </button>
+          <button onClick={() => { setView('builder'); setStep(0) }} style={{ padding: '10px 20px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Crear primera campaña</button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -261,21 +391,17 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
             <div key={c.id} style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a18' }}>{c.nombre}</div>
-                <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 3 }}>
-                  {c.fecha_inicio && c.fecha_fin ? `${c.fecha_inicio} → ${c.fecha_fin}` : 'Sin fechas'}
-                  {c.objetivo ? ` · ${c.objetivo}` : ''}
-                </div>
+                <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 3 }}>{c.fecha_inicio && c.fecha_fin ? `${c.fecha_inicio} → ${c.fecha_fin}` : 'Sin fechas'}{c.objetivo ? ` · ${c.objetivo}` : ''}</div>
               </div>
               <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 20, fontWeight: 700, background: c.estado === 'activa' ? '#dcfce7' : '#f0efe8', color: c.estado === 'activa' ? '#15803d' : '#6b6a63' }}>{c.estado}</span>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Link href={`/calendario`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 11, fontWeight: 600, textDecoration: 'none' }}>
+                <button onClick={() => { setSelectedCampana(c); setDetailPiezas([]); setExpandedId(null); fetchDetailPiezas(c.id); setView('detail') }}
+                  style={{ padding: '7px 14px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Ver campaña
+                </button>
+                <Link href="/calendario" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 11, fontWeight: 600, textDecoration: 'none' }}>
                   <Calendar size={12} /> Calendario
                 </Link>
-                <button onClick={() => { setSelectedCampana(c); setView('detail') }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#e6f1fb', color: '#185fa5', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <Eye size={12} /> Ver
-                </button>
                 <button onClick={async () => { await fetch(`/api/campanas?id=${c.id}`, { method: 'DELETE' }); fetchCampanas() }}
                   style={{ padding: '7px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>
                   <Trash2 size={14} />
@@ -290,41 +416,141 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
 
   // ─── VISTA DETALLE ──────────────────────────────────────────────────────────
   if (view === 'detail' && selectedCampana) {
-    const sections = selectedCampana.output_claude?.split(/^## /m).filter(Boolean) || []
+    const estrategiaTexto = selectedCampana.output_claude?.replace('## Estrategia y narrativa\n', '') || ''
+    const dias = agruparPorDia(detailPiezas)
+    const totalPiezas = detailPiezas.length
+    const generadas = detailPiezas.filter(p => p.copy_exacto).length
+
     return (
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <button onClick={() => setView('list')} style={{ fontSize: 12, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>← Volver</button>
+          <button onClick={() => setView('list')} style={{ fontSize: 12, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>← Campañas</button>
           <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', margin: 0, flex: 1 }}>{selectedCampana.nombre}</h1>
-          <Link href="/calendario" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#1a1a18', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+          <Link href="/calendario" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#f0efe8', color: '#1a1a18', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
             <Calendar size={13} /> Ver en calendario
           </Link>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
-          {[{ l: 'Período', v: `${selectedCampana.fecha_inicio || '—'} → ${selectedCampana.fecha_fin || '—'}` }, { l: 'Objetivo', v: selectedCampana.objetivo || '—' }, { l: 'Estado', v: selectedCampana.estado }].map(m => (
+
+        {/* Métricas */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+          {[
+            { l: 'Período', v: `${selectedCampana.fecha_inicio || '—'} → ${selectedCampana.fecha_fin || '—'}` },
+            { l: 'Objetivo', v: selectedCampana.objetivo || '—' },
+            { l: 'Piezas totales', v: String(totalPiezas) },
+            { l: 'Con contenido', v: `${generadas} / ${totalPiezas}` },
+          ].map(m => (
             <div key={m.l} style={{ background: '#f0efe8', borderRadius: 9, padding: '12px 14px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#9c9a92', textTransform: 'uppercase', letterSpacing: '.5px' }}>{m.l}</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a18', marginTop: 4 }}>{m.v}</div>
             </div>
           ))}
         </div>
-        {sections.map((s, i) => {
-          const [title, ...rest] = s.split('\n')
-          return (
-            <div key={i} style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 8 }}>
-              <button onClick={() => setOpenSection(openSection === title ? null : title)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{title}</span>
-                {openSection === title ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              </button>
-              {openSection === title && (
-                <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                  {rest.join('\n').trim()}
+
+        {/* Estrategia colapsable */}
+        {estrategiaTexto && (
+          <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 16 }}>
+            <button onClick={() => setOpenEstrategia(!openEstrategia)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>🎯 Estrategia y narrativa</span>
+              {openEstrategia ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            </button>
+            {openEstrategia && (
+              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto' }}>
+                {estrategiaTexto}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Piezas por día */}
+        {detailLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 20, color: '#185fa5', fontSize: 13 }}>
+            <Loader2 size={16} className="animate-spin" /> Cargando piezas...
+          </div>
+        ) : totalPiezas === 0 ? (
+          <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: '#9c9a92' }}>Esta campaña no tiene piezas en el calendario aún.</div>
+          </div>
+        ) : (
+          dias.map(({ fecha, piezas }) => {
+            const todasGeneradas = piezas.every(p => p.copy_exacto)
+            const algunaGenerando = piezas.some(p => generandoId === p.id)
+            const sinContenido = piezas.filter(p => !p.copy_exacto).length
+
+            return (
+              <div key={fecha} style={{ background: '#fff', border: `1px solid ${todasGeneradas ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden', marginBottom: 8 }}>
+                {/* Header día */}
+                <div style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', gap: 12 }}>
+                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setOpenPlan(openPlan === fecha ? null as unknown as boolean : fecha as unknown as boolean)}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18', textTransform: 'capitalize' }}>{formatFecha(fecha)}</div>
+                    <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 2 }}>{piezas.length} pieza{piezas.length !== 1 ? 's' : ''} · {sinContenido > 0 ? `${sinContenido} sin contenido` : 'Todo generado ✓'}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {todasGeneradas && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><Check size={12} /> Listo</span>}
+                    {!algunaGenerando && sinContenido > 0 && (
+                      <button onClick={() => generarDia(fecha, estrategiaTexto)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#1a1a18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <Sparkles size={11} /> Generar día
+                      </button>
+                    )}
+                    {algunaGenerando && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#185fa5' }}><Loader2 size={12} className="animate-spin" /> Generando...</div>}
+                  </div>
                 </div>
-              )}
-            </div>
-          )
-        })}
+
+                {/* Piezas */}
+                {piezas.map((pieza) => {
+                  const isGenerando = generandoId === pieza.id
+                  const isExpanded = expandedId === pieza.id
+                  const tieneCopy = !!pieza.copy_exacto
+
+                  return (
+                    <div key={pieza.id} style={{ borderTop: '1px solid #f0efe8' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 20px', gap: 10 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: pieza.color || '#185fa5', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1a18' }}>{pieza.titulo}</div>
+                          <div style={{ fontSize: 11, color: '#9c9a92' }}>{pieza.canal} · {pieza.tipo_contenido}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {tieneCopy && (
+                            <button onClick={() => setExpandedId(isExpanded ? null : pieza.id)}
+                              style={{ fontSize: 11, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                              {isExpanded ? '▲ Cerrar' : '▼ Ver'}
+                            </button>
+                          )}
+                          {!isGenerando && (
+                            <button onClick={() => generarContenidoPieza(pieza, estrategiaTexto)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: tieneCopy ? '#f0efe8' : '#7c3aed', color: tieneCopy ? '#6b6a63' : '#fff', border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              <Sparkles size={10} />{tieneCopy ? 'Regenerar' : 'Generar'}
+                            </button>
+                          )}
+                          {isGenerando && <Loader2 size={13} className="animate-spin" style={{ color: '#7c3aed' }} />}
+                        </div>
+                      </div>
+
+                      {isExpanded && tieneCopy && (
+                        <div style={{ padding: '12px 20px 16px 38px', background: '#f9f8f4', borderTop: '1px solid #f0efe8' }}>
+                          {[
+                            { label: 'Copy exacto', value: pieza.copy_exacto },
+                            { label: 'Guión', value: pieza.guion },
+                            { label: 'Música sugerida', value: pieza.musica_sugerida },
+                            { label: 'Referencia visual', value: pieza.referencia_visual },
+                          ].filter(f => f.value).map(field => (
+                            <div key={field.label} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: '#9c9a92', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{field.label}</div>
+                              <div style={{ fontSize: 12, color: '#1a1a18', lineHeight: 1.6, whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e0dfd5', borderRadius: 7, padding: '8px 10px' }}>{field.value}</div>
+                            </div>
+                          ))}
+                          <div style={{ fontSize: 11, color: '#9c9a92' }}>Responsable: <strong>{pieza.responsable}</strong></div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })
+        )}
       </div>
     )
   }
@@ -424,14 +650,13 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
 
       {step >= 1 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
           {/* FASE 1 — ESTRATEGIA */}
           <div style={{ background: '#fff', border: `1px solid ${estrategiaDone ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', gap: 12 }}>
               <span style={{ fontSize: 20 }}>🎯</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>Estrategia y narrativa</div>
-                <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>Concepto creativo, posicionamiento y narrativa de la campaña</div>
+                <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>Concepto creativo, posicionamiento y narrativa</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {estrategiaDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> Completada</span>}
@@ -444,39 +669,45 @@ Responde ÚNICAMENTE con las líneas del plan, sin texto adicional antes ni desp
             {estrategia && !openEstrategia && !estrategiaLoading && <div style={{ padding: '0 20px 12px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#9c9a92', overflow: 'hidden', maxHeight: 36, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{estrategia.slice(0, 150)}...</div>}
           </div>
 
-          {/* FASE 2 — PLAN DE CONTENIDO */}
+          {/* FASE 2 — PLAN */}
           {estrategiaDone && (
             <div style={{ background: '#fff', border: `1px solid ${planDone ? '#bbf7d0' : '#e0dfd5'}`, borderRadius: 11, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', gap: 12 }}>
                 <span style={{ fontSize: 20 }}>📋</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>Plan de contenido</div>
-                  <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>El CMO decide qué publicar, cuándo y en qué canal — se guarda directo en el calendario</div>
+                  <div style={{ fontSize: 11, color: '#9c9a92', marginTop: 1 }}>
+                    {planLoading ? `Guardando piezas en calendario... ${syncCount} guardadas` : planDone ? `${syncCount} piezas guardadas en calendario` : 'El CMO decide qué publicar, cuándo y en qué canal'}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {planDone && !syncing && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> {syncCount} piezas en calendario</span>}
-                  {syncing && <span style={{ fontSize: 11, color: '#185fa5', display: 'flex', alignItems: 'center', gap: 4 }}><Loader2 size={12} className="animate-spin" /> Guardando...</span>}
-                  {!planLoading && !saving && !syncing && <button onClick={generarPlan} style={{ padding: '7px 14px', background: planDone ? '#f0efe8' : '#1a1a18', color: planDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{planDone ? '↻ Regenerar' : '✦ Generar plan'}</button>}
-                  {(planLoading || saving) && <Loader2 size={14} className="animate-spin" style={{ color: '#185fa5' }} />}
+                  {planDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> {syncCount} piezas</span>}
+                  {!planLoading && <button onClick={generarPlan} style={{ padding: '7px 14px', background: planDone ? '#f0efe8' : '#1a1a18', color: planDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{planDone ? '↻ Regenerar' : '✦ Generar plan'}</button>}
+                  {planLoading && <Loader2 size={14} className="animate-spin" style={{ color: '#185fa5' }} />}
                   {planRaw && <button onClick={() => setOpenPlan(!openPlan)} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openPlan ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
                 </div>
               </div>
-              {planLoading && <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}><Loader2 size={14} className="animate-spin" /> El CMO está planificando el contenido...</div>}
+              {planLoading && <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}><Loader2 size={14} className="animate-spin" /> Generando plan y guardando en calendario...</div>}
               {planRaw && openPlan && <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#1a1a18', lineHeight: 2, whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto', fontFamily: 'monospace' }}>{planRaw}</div>}
-              {planRaw && !openPlan && !planLoading && <div style={{ padding: '0 20px 12px', borderTop: '1px solid #f0efe8', fontSize: 12, color: '#9c9a92', overflow: 'hidden', maxHeight: 36, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{planRaw.slice(0, 150)}...</div>}
             </div>
           )}
 
-          {/* CTA IR AL CALENDARIO */}
-          {syncDone && (
+          {/* CTA */}
+          {planDone && savedId && (
             <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 11, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>✓ Campaña lista — {syncCount} piezas guardadas en el calendario</div>
-                <div style={{ fontSize: 11, color: '#166534', marginTop: 2 }}>Ve al calendario para generar el contenido de cada pieza día a día</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>✓ {syncCount} piezas guardadas en el calendario</div>
+                <div style={{ fontSize: 11, color: '#166534', marginTop: 2 }}>Ahora genera el contenido de cada pieza desde la campaña o desde el calendario</div>
               </div>
-              <Link href="/calendario" style={{ padding: '9px 18px', background: '#15803d', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Calendar size={13} /> Ir al calendario →
-              </Link>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { fetchDetailPiezas(savedId); setSelectedCampana(campanas.find(c => c.id === savedId) || null as unknown as Campana); setView('detail') }}
+                  style={{ padding: '9px 16px', background: '#15803d', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Ver piezas →
+                </button>
+                <Link href="/calendario" style={{ padding: '9px 16px', background: '#fff', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+                  <Calendar size={13} style={{ display: 'inline', marginRight: 4 }} /> Calendario
+                </Link>
+              </div>
             </div>
           )}
         </div>
