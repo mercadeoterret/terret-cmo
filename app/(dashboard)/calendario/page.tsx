@@ -249,6 +249,55 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
         </div>
       </div>
 
+      {/* Panel de configuración de búsqueda */}
+      {showBuscarConfig && !buscandoFechas && (
+        <div style={{ background: '#fff', border: '1px solid #E5E2D9', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1C1B18', marginBottom: 14 }}>Configurar búsqueda de fechas</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Desde</label>
+              <input type="date" value={buscarDesde} onChange={e => setBuscarDesde(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #E5E2D9', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Hasta</label>
+              <input type="date" value={buscarHasta} onChange={e => setBuscarHasta(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #E5E2D9', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {[
+              { label: 'Este mes', fn: () => { const n = new Date(); setBuscarDesde(format(n, 'yyyy-MM-dd')); setBuscarHasta(format(new Date(n.getFullYear(), n.getMonth()+1, 0), 'yyyy-MM-dd')) } },
+              { label: 'Próximos 3 meses', fn: () => { const n = new Date(); setBuscarDesde(format(n, 'yyyy-MM-dd')); setBuscarHasta(format(new Date(n.getTime() + 90*24*60*60*1000), 'yyyy-MM-dd')) } },
+              { label: 'Próximos 6 meses', fn: () => { setBuscarDesde(''); setBuscarHasta('') } },
+              { label: 'Todo 2026', fn: () => { setBuscarDesde('2026-01-01'); setBuscarHasta('2026-12-31') } },
+            ].map(b => (
+              <button key={b.label} onClick={b.fn}
+                style={{ flex: 1, padding: '7px 4px', background: '#F2F0EA', border: '1px solid #E5E2D9', borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#6B6860' }}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: '#9B9890', marginBottom: 12 }}>Sin fechas → busca los próximos 6 meses. Incluye carreras Colombia y grandes maratones mundiales.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setShowBuscarConfig(false)}
+              style={{ padding: '9px 16px', border: '1px solid #E5E2D9', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#6B6860' }}>
+              Cancelar
+            </button>
+            <button onClick={buscarFechasNuevas}
+              style={{ flex: 1, padding: '9px', background: '#1C1B18', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              🔍 Buscar fechas
+            </button>
+          </div>
+        </div>
+      )}
+
+      {buscarError && (
+        <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#C91B1B' }}>
+          {buscarError}
+        </div>
+      )}
+
       {/* Calendario */}
       <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         {/* Nav */}
