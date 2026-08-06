@@ -7,6 +7,14 @@ import { Loader2 } from 'lucide-react'
 import { RACES_CO, COMMERCIAL_DATES } from '@/lib/terret-context'
 
 interface KPI { roas_meta: number; roas_google: number; roas_tiktok: number; revenue_total_m: number }
+interface MetricasResumen {
+  piezas: number
+  canales: { canal: string; piezas: number; engagement_promedio: number; views_total: number }[]
+  tipos: { tipo: string; piezas: number; engagement_promedio: number }[]
+  alertas: { titulo: string; canal: string; metrica: string; valor: number; benchmark: number }[]
+  mejor_canal: string | null
+  mejor_tipo: string | null
+}
 interface Tarea { id: string; titulo: string; fecha: string; canal: string; estado: string; responsable: string; campanas?: { nombre: string } }
 
 const DS = {
@@ -33,6 +41,7 @@ export default function HomePage() {
   const [insight, setInsight] = useState('')
   const [loadingInsight, setLoadingInsight] = useState(false)
   const [campanas, setCampanas] = useState<{ id: string; nombre: string; fecha_inicio: string; fecha_fin: string }[]>([])
+  const [metricasResumen, setMetricasResumen] = useState<MetricasResumen | null>(null)
 
   const today = new Date()
   const todayStr = format(today, 'yyyy-MM-dd')
@@ -47,6 +56,7 @@ export default function HomePage() {
       if (Array.isArray(d)) setTareasVencidas(d.filter((t: Tarea) => t.estado === 'pendiente' && t.fecha < todayStr))
     })
     fetch('/api/campanas').then(r => r.json()).then(d => { if (Array.isArray(d)) setCampanas(d.slice(0, 3)) })
+    fetch('/api/metricas-resumen').then(r => r.json()).then(d => { if (d.piezas !== undefined) setMetricasResumen(d) })
   }, [])
 
   const proximas = [...RACES_CO.filter(r => r.date >= todayStr), ...COMMERCIAL_DATES.filter(f => f.date >= todayStr)]
@@ -215,6 +225,55 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* Rendimiento de contenido */}
+      {metricasResumen && metricasResumen.piezas > 0 && (
+        <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, padding: '18px 20px', marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: DS.text, marginBottom: 16 }}>
+            Rendimiento últimos 30 días
+            <span style={{ fontSize: 11, fontWeight: 400, color: DS.textTertiary, marginLeft: 8 }}>{metricasResumen.piezas} piezas con métricas</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: metricasResumen.alertas.length > 0 ? 16 : 0 }}>
+            {metricasResumen.mejor_canal && (
+              <div style={{ background: DS.successLight, borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: DS.success, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>✓ Mejor canal</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: DS.text }}>{metricasResumen.mejor_canal}</div>
+                <div style={{ fontSize: 11, color: DS.textSecondary, marginTop: 2 }}>Mayor engagement promedio</div>
+              </div>
+            )}
+            {metricasResumen.mejor_tipo && (
+              <div style={{ background: DS.infoLight, borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: DS.info, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>✓ Mejor formato</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: DS.text }}>{metricasResumen.mejor_tipo}</div>
+                <div style={{ fontSize: 11, color: DS.textSecondary, marginTop: 2 }}>Mayor engagement promedio</div>
+              </div>
+            )}
+            {metricasResumen.canales.length > 0 && (
+              <div style={{ background: DS.bg, borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Engagement por canal</div>
+                {metricasResumen.canales.slice(0, 3).map(c => (
+                  <div key={c.canal} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: DS.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{c.canal}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: c.engagement_promedio >= 5 ? DS.success : c.engagement_promedio >= 2 ? DS.warning : DS.danger }}>
+                      {c.engagement_promedio > 0 ? `${c.engagement_promedio.toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {metricasResumen.alertas.length > 0 && (
+            <div style={{ background: DS.dangerLight, borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: DS.danger, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>⚠ Contenidos bajo benchmark</div>
+              {metricasResumen.alertas.slice(0, 3).map((a, i) => (
+                <div key={i} style={{ fontSize: 12, color: DS.text, marginBottom: 4 }}>
+                  <strong>{a.canal}</strong> · {a.titulo.slice(0, 40)}... — {a.metrica}: {a.valor} (benchmark: {a.benchmark})
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Insight del CMO */}
       <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
