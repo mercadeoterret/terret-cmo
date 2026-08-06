@@ -173,8 +173,13 @@ REGLAS DE FRECUENCIA (obligatorias):
 - TikTok orgánico: máximo 3 piezas/semana
 - Email: máximo 2/semana
 - WhatsApp: máximo 2/semana
-- NO publiques todos los días si no hay razón estratégica
 - Títulos: máximo 6 palabras
+
+REGLAS DE PAUTA (MUY IMPORTANTE):
+- Pauta Meta, Pauta TikTok, Google Ads: se configuran UNA SOLA VEZ por fase, no cada día
+- Máximo 2 entradas de pauta por semana (una por fase de campaña)
+- Las pautas se configuran al inicio de cada fase: semana 1 awareness, semana 3 conversión
+- NO repitas pauta todos los días — una entrada de pauta representa toda la configuración de esa fase
 
 FORMATO EXACTO — solo líneas así, nada más:
 YYYY-MM-DD | Canal | Tipo | "Título corto"
