@@ -278,17 +278,18 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                 {/* Tareas — solo badges de colores + contador */}
                 {total > 0 && filtro !== 'fechas' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: staticEvs.length > 0 ? 4 : 0 }}>
-                    {/* Dots de canales */}
+                    {/* Iconos de canal */}
                     <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1 }}>
-                      {dbEvs.slice(0, 6).map((ev, i) => (
-                        <div key={i} style={{
-                          width: 8, height: 8, borderRadius: '50%',
-                          background: ev.estado === 'publicado' ? DS.success : ev.copy_exacto ? (ev.color || DS.info) : '#7C3AED',
-                          opacity: ev.estado === 'publicado' ? 0.6 : 1,
-                          flexShrink: 0,
-                        }} title={ev.titulo} />
+                      {dbEvs.slice(0, 5).map((ev, i) => (
+                        <span key={i} style={{
+                          fontSize: 10, lineHeight: 1,
+                          opacity: ev.estado === 'publicado' ? 0.4 : 1,
+                          filter: ev.estado === 'publicado' ? 'grayscale(1)' : 'none',
+                        }} title={ev.titulo}>
+                          {CANAL_ICON[ev.canal || ''] || '·'}
+                        </span>
                       ))}
-                      {total > 6 && <span style={{ fontSize: 8, color: DS.textTertiary, fontWeight: 700 }}>+{total - 6}</span>}
+                      {total > 5 && <span style={{ fontSize: 8, color: DS.textTertiary, fontWeight: 700 }}>+{total - 5}</span>}
                     </div>
                     {/* Contador */}
                     <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
