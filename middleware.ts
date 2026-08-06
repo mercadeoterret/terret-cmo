@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // APIs no protegidas (cron, etc)
-  if (pathname.startsWith('/api/cron') || pathname.startsWith('/api/investigar')) {
+  if (pathname.startsWith('/api/cron') || pathname.startsWith('/api/investigar') || pathname.startsWith('/api/buscar-fechas')) {
     return NextResponse.next()
   }
 
