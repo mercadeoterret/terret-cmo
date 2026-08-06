@@ -325,20 +325,9 @@ Título: ${pieza.titulo}
 ${otrasHoy ? `\nOTRAS PIEZAS YA GENERADAS PARA ESTE DÍA (no repetir):\n${otrasHoy}\n` : ''}
 Genera el contenido COMPLETO y LISTO PARA EJECUTAR:
 
-COPY EXACTO:
-[Texto completo listo para publicar. Para email: asunto + cuerpo. Para WhatsApp: mensaje completo. Para redes: caption con hashtags. Para pauta: texto principal + titular + descripción]
+Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques markdown.
 
-GUION:
-[Solo si es video/reel/ugc: Hook (0-3s) → Desarrollo (4-25s) → CTA. Si no aplica: N/A]
-
-MUSICA:
-[Artista - Canción O género + mood específico]
-
-REFERENCIA VISUAL:
-[Locación, vestuario, iluminación, ángulo de cámara]
-
-RESPONSABLE:
-[David / Creadora / Comité]`
+{"copy_exacto":"[caption/texto completo para publicar sin backticks. Para email: ASUNTO: ... CUERPO: ... Para WhatsApp: mensaje directo. Para redes: caption + hashtags]","guion":"[SIEMPRE para video/reel/ugc/story/carrusel. VOZ EN OFF: SÍ o NO. Si NO: TEXTOS EN PANTALLA con segundo de aparición. SECUENCIA DE PLANOS numerada: qué se ve y duración en segundos. CTA FINAL: cómo termina. Para carrusel: SLIDE 1: texto, SLIDE 2, etc. Solo N/A si es email/pauta/WhatsApp]","musica_sugerida":"[Artista - Canción específica o género + BPM + mood + canción de referencia]","referencia_visual":"[Locación exacta en Medellín con zona. Hora del día y luz. Vestuario pieza por pieza. Ángulo y movimiento de cámara. Colores dominantes]","responsable":"[Creadora si es video/reel/ugc/story/carrusel/post. David si es email/pauta. Comité si requiere aprobación]"}`
 
     const res = await fetch('/api/claude', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -353,50 +342,34 @@ RESPONSABLE:
       text += dec.decode(value)
     }
 
-    console.log('CLAUDE OUTPUT PRIMEROS 500 CHARS:', text.substring(0, 500))
-    const getField = (key: string) => {
-      // Intenta múltiples patrones para capturar el campo
-      const patterns = [
-        new RegExp(`\\*\\*${key}\\*\\*:?\\s*([\\s\\S]*?)(?=\\n\\*\\*[A-ZÁÉÍÓÚ]|\\n##|$)`, 'i'),
-        new RegExp(`##\\s*${key}:?\\s*([\\s\\S]*?)(?=\\n##|\\n\\*\\*[A-ZÁÉÍÓÚ]|$)`, 'i'),
-        new RegExp(`${key}:?\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]{3,}:|\\n##|\\n\\*\\*|$)`, 'i'),
-      ]
-      for (const pattern of patterns) {
-        const match = text.match(pattern)
-        if (match && match[1].trim() && match[1].trim() !== 'N/A') {
-          return match[1].trim()
-        }
-      }
-      return ''
-    }
-
-    const updates = {
+    let updates = {
       id: pieza.id,
-      copy_exacto: getField('COPY EXACTO'),
-      guion: getField('GUION'),
-      musica_sugerida: getField('MUSICA'),
-      referencia_visual: getField('REFERENCIA VISUAL'),
-      responsable: getField('RESPONSABLE') || pieza.responsable || 'David',
+      copy_exacto: '',
+      guion: '',
+      musica_sugerida: '',
+      referencia_visual: '',
+      responsable: pieza.responsable || 'David',
+    }
+    try {
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      if (parsed.copy_exacto) updates.copy_exacto = parsed.copy_exacto.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim()
+      if (parsed.guion) updates.guion = parsed.guion
+      if (parsed.musica_sugerida) updates.musica_sugerida = parsed.musica_sugerida
+      if (parsed.referencia_visual) updates.referencia_visual = parsed.referencia_visual
+      if (parsed.responsable) updates.responsable = parsed.responsable
+    } catch {
+      updates.copy_exacto = text.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim()
     }
 
+    const piezaId = pieza.id
     const patchRes = await fetch('/api/tareas', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)
     })
-    const patchData = await patchRes.json()
-    console.log('PATCH STATUS:', patchRes.status, 'PATCH RESPONSE:', JSON.stringify(patchData))
+    await patchRes.json()
 
-    const piezaId = pieza.id
     setDetailPiezas(prev => prev.map(p => p.id === piezaId ? { ...p, ...updates } : p))
-    setExpandedId(pieza.id)
-    setGenerandoId(null)
-  }
-
-  async function generarDia(fecha: string, estrategiaTexto: string) {
-    const sinContenido = detailPiezas.filter(p => p.fecha === fecha && !p.copy_exacto)
-    for (const pieza of sinContenido) {
-      await generarContenidoPieza(pieza, estrategiaTexto)
-    }
   }
 
   // ─── VISTA LISTA ────────────────────────────────────────────────────────────
