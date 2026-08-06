@@ -59,7 +59,7 @@ export default function HomePage() {
     })
     fetch('/api/campanas').then(r => r.json()).then(d => { if (Array.isArray(d)) setCampanas(d.slice(0, 3)) })
     fetch('/api/metricas-resumen').then(r => r.json()).then(d => { if (d.piezas !== undefined) setMetricasResumen(d) })
-    fetch('/api/insights').then(r => r.json()).then(d => { if (Array.isArray(d)) setHistorialInsights(d) })
+    fetch('/api/insights').then(r => r.json()).then(d => { if (Array.isArray(d)) { setHistorialInsights(d); if (d[0]) setInsight(d[0].contenido) } })
   }, [])
 
   const proximas = [...RACES_CO.filter(r => r.date >= todayStr), ...COMMERCIAL_DATES.filter(f => f.date >= todayStr)]
