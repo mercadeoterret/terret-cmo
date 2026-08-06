@@ -100,10 +100,10 @@ export default function CalendarioPage() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('terret_fechas_extras')
-      if (saved) setFechasExtras(JSON.parse(saved))
-    } catch { /* ignore */ }
+    fetch('/api/fechas-calendario')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setFechasExtras(d.map((f: Record<string,string>) => ({ fecha: f.fecha, nombre: f.nombre, tipo: f.tipo as 'carrera' | 'comercial', ciudad: f.ciudad, distancia: f.distancia }))) })
+      .catch(() => {})
   }, [])
 
   function getDbEvs(dateStr: string) {
@@ -193,10 +193,13 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
     setBuscandoFechas(false)
   }
 
-  function agregarFecha(f: FechaNueva) {
-    const nuevas = [...fechasExtras, f]
-    setFechasExtras(nuevas)
-    localStorage.setItem('terret_fechas_extras', JSON.stringify(nuevas))
+  async function agregarFecha(f: FechaNueva) {
+    await fetch('/api/fechas-calendario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(f)
+    })
+    setFechasExtras(prev => [...prev, f])
     setFechasNuevas(prev => prev.filter(x => !(x.fecha === f.fecha && x.nombre === f.nombre)))
   }
 
