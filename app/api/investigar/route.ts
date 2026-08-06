@@ -80,7 +80,12 @@ INVESTIGA:
 
 Busca: "running Colombia 2026 tendencias", "Nike Colombia instagram running", "carreras atletismo Colombia 2026"
 
-Entrega análisis estructurado de máximo 800 palabras.`
+Responde SOLO en este formato (máx 350 palabras total):
+
+## OPORTUNIDADES [máx 80 palabras]
+## COMPETENCIA [Nike, Adidas, CEP, On Running — 1 frase cada uno, máx 120 palabras]
+## DIFERENCIACIÓN TERRET [máx 60 palabras]
+## HASHTAGS [top 5]`
       }]
     })
 
