@@ -18,8 +18,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
     const manual = body.manual === true
+    const fechaInicioOverride = body.fecha_inicio || null
+    const fechaFinOverride = body.fecha_fin || null
+    const contextoAdicional = body.contexto || ''
 
     const sb = createServiceClient()
+
+    // Marcar cron como running
+    await sb.from('cron_status').upsert({ id: 'singleton', estado: 'running', iniciado_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+
     const { data: brandData } = await sb.from('brand_knowledge').select('contenido').eq('activo', true)
     const { data: kpisData } = await sb.from('kpis').select('*').order('semana', { ascending: false }).limit(1).single()
     const { data: campanasRecientes } = await sb.from('campanas').select('nombre, fecha_inicio, fecha_fin, objetivo').order('created_at', { ascending: false }).limit(5)
@@ -98,7 +105,8 @@ ANÁLISIS DE COMPETENCIA Y MEMORIA DISPONIBLE: Usa esta información para tomar 
 ${investigacion}
 ${memoriaTexto}
 
-Con este contexto completo, genera la CAMPAÑA para Terret. Considera:
+Con este contexto completo, genera la CAMPAÑA para Terret.
+${contextoAdicional ? `\nCONTEXTO ADICIONAL DEL EQUIPO:\n${contextoAdicional}\n` : ''} Considera:
 - Qué está haciendo la competencia y cómo diferenciarnos
 - Qué narrativas ya hemos usado y cómo iterarlas estratégicamente
 - La distribución correcta de contenido según el tipo de campaña
@@ -144,7 +152,7 @@ Luego la estrategia:
       messages: [{
         role: 'user',
         content: `CAMPAÑA: ${campanaMeta.nombre}
-PERÍODO: ${campanaMeta.fecha_inicio} al ${campanaMeta.fecha_fin}
+PERÍODO: ${fechaInicioOverride || campanaMeta.fecha_inicio} al ${fechaFinOverride || campanaMeta.fecha_fin}
 CANALES: ${campanaMeta.canales.join(', ')}
 OBJETIVO: ${campanaMeta.objetivo}
 
@@ -227,6 +235,14 @@ Responde ÚNICAMENTE con las líneas del plan.`
       tags: campanaMeta.canales,
     })
 
+    // Marcar cron como done
+    await sb.from('cron_status').upsert({ id: 'singleton', estado: 'done', campana_nombre: campana.nombre, updated_at: new Date().toISOString() })
+
+    // Reset a idle después de 30 segundos
+    setTimeout(async () => {
+      await sb.from('cron_status').upsert({ id: 'singleton', estado: 'idle', updated_at: new Date().toISOString() })
+    }, 30000)
+
     return NextResponse.json({
       ok: true,
       campana_id: campana.id,
@@ -237,6 +253,11 @@ Responde ÚNICAMENTE con las líneas del plan.`
 
   } catch (e) {
     console.error('Error investigar:', e)
+    // Marcar error en cron_status
+    try {
+      const sb2 = createServiceClient()
+      await sb2.from('cron_status').upsert({ id: 'singleton', estado: 'idle', updated_at: new Date().toISOString() })
+    } catch { /* ignore */ }
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }

@@ -78,8 +78,14 @@ export default function CampanasPage() {
   const [openPlan, setOpenPlan] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [showModoModal, setShowModoModal] = useState(false)
+  const [showInvestigarForm, setShowInvestigarForm] = useState(false)
+  const [investigarFechaInicio, setInvestigarFechaInicio] = useState('')
+  const [investigarFechaFin, setInvestigarFechaFin] = useState('')
+  const [investigarContexto, setInvestigarContexto] = useState('')
   const [investigando, setInvestigando] = useState(false)
   const [investigacionLog, setInvestigacionLog] = useState('')
+  const [cronStatus, setCronStatus] = useState<string>('idle')
+  const [proximoCron, setProximoCron] = useState<string>('')
   const [syncCount, setSyncCount] = useState(0)
 
   // Generación de piezas
@@ -88,17 +94,57 @@ export default function CampanasPage() {
   const savedIdRef = useRef<string | null>(null)
   const estrategiaRef = useRef('')
 
-  useEffect(() => { fetchCampanas() }, [])
+  useEffect(() => {
+    fetchCampanas()
+
+    // Countdown al próximo domingo 10pm Colombia (UTC-5 = 03:00 UTC lunes)
+    function calcProximoCron() {
+      const now = new Date()
+      const nextSunday = new Date(now)
+      const day = now.getDay() // 0=dom, 1=lun...
+      const daysUntilSunday = day === 0 ? 7 : 7 - day
+      nextSunday.setDate(now.getDate() + daysUntilSunday)
+      nextSunday.setUTCHours(3, 0, 0, 0) // 10pm Colombia = 3am UTC lunes
+      const diff = nextSunday.getTime() - now.getTime()
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      return `${days}d ${hours}h ${mins}m`
+    }
+
+    setProximoCron(calcProximoCron())
+    const cronInterval = setInterval(() => setProximoCron(calcProximoCron()), 30000)
+
+    // Polling cron status cada 15s
+    async function checkCronStatus() {
+      try {
+        const r = await fetch('/api/cron-status')
+        const d = await r.json()
+        if (d.estado) setCronStatus(d.estado)
+        if (d.estado === 'running') fetchCampanas()
+      } catch { /* ignore */ }
+    }
+    checkCronStatus()
+    const statusInterval = setInterval(checkCronStatus, 15000)
+
+    return () => { clearInterval(cronInterval); clearInterval(statusInterval) }
+  }, [])
 
   async function investigarYGenerar() {
     setInvestigando(true)
     setShowModoModal(false)
-    setInvestigacionLog('Investigando tendencias y oportunidades...')
+    setShowInvestigarForm(false)
+    setInvestigacionLog('Investigando tendencias, competencia y oportunidades...')
     try {
       const res = await fetch('/api/investigar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manual: true })
+        body: JSON.stringify({
+          manual: true,
+          fecha_inicio: investigarFechaInicio || undefined,
+          fecha_fin: investigarFechaFin || undefined,
+          contexto: investigarContexto || undefined,
+        })
       })
       const data = await res.json()
       if (data.ok) {
@@ -392,6 +438,27 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
           + Nueva campaña
         </button>
       </div>
+      {/* Countdown + notificación cron */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F2F0EA', borderRadius: 10, padding: '8px 14px' }}>
+          <span style={{ fontSize: 13 }}>⏱</span>
+          <span style={{ fontSize: 12, color: '#6B6860' }}>Próxima auto-generación:</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#1C1B18' }}>Domingo 10pm · en {proximoCron}</span>
+        </div>
+        {cronStatus === 'running' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#EBF3FC', borderRadius: 10, padding: '8px 14px', animation: 'pulse 2s infinite' }}>
+            <span style={{ fontSize: 13 }}>🤖</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#185FA5' }}>El CMO está generando una campaña automáticamente...</span>
+          </div>
+        )}
+        {cronStatus === 'done' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#E8F5EE', borderRadius: 10, padding: '8px 14px' }}>
+            <span style={{ fontSize: 13 }}>✓</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1A7A4A' }}>Nueva campaña generada automáticamente</span>
+          </div>
+        )}
+      </div>
+
       {campanas.length === 0 ? (
         <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 12, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
@@ -425,22 +492,75 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
           ))}
         </div>
       )}
-    {showModoModal && (
+    {showModoModal && !showInvestigarForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }} onClick={() => setShowModoModal(false)}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', marginBottom: 8 }}>Nueva campaña</div>
-            <div style={{ fontSize: 13, color: '#6b6a63', marginBottom: 24 }}>¿Cómo quieres crear esta campaña?</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a18', marginBottom: 4 }}>Nueva campaña</div>
+            <div style={{ fontSize: 13, color: '#6b6a63', marginBottom: 20 }}>¿Cómo quieres crear esta campaña?</div>
+
+            {/* Countdown */}
+            <div style={{ background: '#F2F0EA', borderRadius: 10, padding: '10px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>⏱</span>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px' }}>Próxima auto-generación</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1C1B18' }}>Domingo 10pm Colombia — en {proximoCron}</div>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <button onClick={() => { setShowModoModal(false); setView('builder'); setStep(0); setEstrategia(''); setEstrategiaDone(false); setPlanRaw(''); setPlanDone(false); setSavedId(null); setSyncCount(0) }}
-                style={{ padding: '18px 20px', background: '#f9f8f4', border: '1.5px solid #e0dfd5', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a18', marginBottom: 4 }}>✏️ Crear manualmente</div>
-                <div style={{ fontSize: 12, color: '#6b6a63' }}>Tú defines el nombre, fechas, objetivo y canales. El CMO genera la estrategia y el plan.</div>
+                style={{ padding: '18px 20px', background: '#F7F5F0', border: '1.5px solid #E5E2D9', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1C1B18', marginBottom: 4 }}>✏️ Crear manualmente</div>
+                <div style={{ fontSize: 12, color: '#6B6860' }}>Tú defines el nombre, fechas, objetivo y canales. El CMO genera la estrategia y el plan.</div>
               </button>
-              <button onClick={investigarYGenerar}
-                style={{ padding: '18px 20px', background: '#1a1a18', border: 'none', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button onClick={() => setShowInvestigarForm(true)}
+                style={{ padding: '18px 20px', background: '#1C1B18', border: 'none', borderRadius: 12, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginBottom: 4 }}>🔍 Investigar y generar automáticamente</div>
-                <div style={{ fontSize: 12, color: '#9c9a92' }}>El CMO investiga tendencias, carreras próximas y oportunidades en web, y crea la campaña solo.</div>
+                <div style={{ fontSize: 12, color: '#9c9a92' }}>El CMO investiga tendencias, competencia y oportunidades en web, analiza campañas anteriores y crea la campaña solo.</div>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInvestigarForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }} onClick={() => setShowInvestigarForm(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#1C1B18', marginBottom: 4 }}>🔍 Investigar y generar</div>
+            <div style={{ fontSize: 13, color: '#6B6860', marginBottom: 24 }}>Opcional — deja vacío y el CMO decide todo solo.</div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Fecha de inicio</label>
+                  <input type="date" value={investigarFechaInicio} onChange={e => setInvestigarFechaInicio(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E2D9', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Fecha de fin</label>
+                  <input type="date" value={investigarFechaFin} onChange={e => setInvestigarFechaFin(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E2D9', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Contexto adicional para el CMO</label>
+                <textarea value={investigarContexto} onChange={e => setInvestigarContexto(e.target.value)} rows={4}
+                  placeholder={'Ej: "Tenemos stock alto de cinturones, prioriza ese producto"
+"No usar el concepto del maratón, ya lo trabajamos mucho"
+"Esta semana hay descuento del 20% en medias"
+"Solo contenido orgánico, sin pauta esta semana"'}
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E2D9', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', resize: 'none', lineHeight: 1.5 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowInvestigarForm(false)}
+                  style={{ flex: 1, padding: '11px', border: '1px solid #E5E2D9', borderRadius: 9, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#6B6860' }}>
+                  Volver
+                </button>
+                <button onClick={investigarYGenerar}
+                  style={{ flex: 2, padding: '11px', background: '#1C1B18', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  🔍 Investigar y generar
+                </button>
+              </div>
             </div>
           </div>
         </div>
