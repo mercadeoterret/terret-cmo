@@ -293,6 +293,13 @@ Reglas:
     fetchCampanas()
   }
 
+  async function generarDia(fecha: string, estrategiaTexto: string) {
+    const sinContenido = detailPiezas.filter(p => p.fecha === fecha && !p.copy_exacto)
+    for (const pieza of sinContenido) {
+      await generarContenidoPieza(pieza, estrategiaTexto)
+    }
+  }
+
   function extractEstrategiaResumen(estrategiaTexto: string): string {
     // Extraer solo concepto, mensajes clave y tono — no toda la estrategia
     const sections: string[] = []
