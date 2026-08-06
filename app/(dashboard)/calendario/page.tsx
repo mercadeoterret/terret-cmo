@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Plus, X, Sparkles, Loader2, Search } from 'l
 import { RACES_CO, COMMERCIAL_DATES, RACES_INTL } from '@/lib/terret-context'
 
 const DS = {
-  bg: '#F2F0EA', surface: '#FFFFFF', border: '#E5E2D9', surface2: '#F7F5F0',
+  bg: '#F2F0EA', surface: '#FFFFFF', border: '#E5E2D9',
   text: '#1C1B18', textSecondary: '#6B6860', textTertiary: '#9B9890',
   accent: '#E8520A', accentLight: '#FEF0E8',
   success: '#1A7A4A', successLight: '#E8F5EE',
@@ -18,12 +18,11 @@ const DS = {
 const CANAL_ICON: Record<string, string> = {
   'Instagram': '📸', 'Instagram orgánico': '📸', 'TikTok': '🎵', 'TikTok orgánico': '🎵',
   'Meta Ads': '💰', 'Google Ads': '🔍', 'Email': '📧', 'Email marketing': '📧',
-  'WhatsApp': '💬', 'WhatsApp / estados': '💬', 'Influencers / UGC': '🎬',
-  'Shopify Email': '📧',
+  'WhatsApp': '💬', 'WhatsApp / estados': '💬', 'Influencers / UGC': '🎬', 'Shopify Email': '📧',
 }
 
 interface Evento {
-  id?: string; fecha: string; titulo: string; descripcion?: string; tipo: string
+  id?: string; fecha: string; titulo: string; tipo: string
   canal?: string; color?: string; estado?: string; copy_exacto?: string
   guion?: string; musica_sugerida?: string; referencia_visual?: string
   responsable?: string; source?: string; tipo_contenido?: string; campana_id?: string
@@ -32,6 +31,8 @@ interface Evento {
 interface FechaNueva {
   fecha: string; nombre: string; tipo: 'carrera' | 'comercial'; ciudad?: string; distancia?: string
 }
+
+type FiltroCalendario = 'todo' | 'tareas' | 'fechas'
 
 export default function CalendarioPage() {
   const [cur, setCur] = useState(new Date())
@@ -46,6 +47,7 @@ export default function CalendarioPage() {
   const [fechasNuevas, setFechasNuevas] = useState<FechaNueva[]>([])
   const [showFechasModal, setShowFechasModal] = useState(false)
   const [fechasExtras, setFechasExtras] = useState<FechaNueva[]>([])
+  const [filtro, setFiltro] = useState<FiltroCalendario>('todo')
 
   const ms = startOfMonth(cur)
   const me = endOfMonth(cur)
@@ -62,7 +64,6 @@ export default function CalendarioPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Cargar fechas extras guardadas en localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem('terret_fechas_extras')
@@ -70,20 +71,21 @@ export default function CalendarioPage() {
     } catch { /* ignore */ }
   }, [])
 
-  function getDbEvs(dateStr: string): Evento[] {
+  function getDbEvs(dateStr: string) {
     return eventos.filter(e => e.fecha === dateStr)
   }
 
-  function getStaticEvs(dateStr: string): { titulo: string; tipo: string; color: string; badge: string }[] {
-    const all: { titulo: string; tipo: string; color: string; badge: string }[] = []
+  function getStaticEvs(dateStr: string) {
+    const all: { titulo: string; tipo: string; color: string; colorBg: string; icon: string }[] = []
+    if (filtro === 'tareas') return all
     RACES_CO.filter(r => r.date === dateStr).forEach(r =>
-      all.push({ titulo: r.name, tipo: 'carrera', color: DS.danger, badge: '🏃' }))
+      all.push({ titulo: r.name, tipo: 'Carrera CO', color: DS.danger, colorBg: DS.dangerLight, icon: '🏃' }))
     COMMERCIAL_DATES.filter(f => f.date === dateStr).forEach(f =>
-      all.push({ titulo: f.name, tipo: 'comercial', color: DS.warning, badge: '📅' }))
+      all.push({ titulo: f.name, tipo: 'Fecha comercial', color: DS.warning, colorBg: DS.warningLight, icon: '📅' }))
     RACES_INTL.filter(r => r.date === dateStr).forEach(r =>
-      all.push({ titulo: `${r.name}`, tipo: 'intl', color: DS.info, badge: '🌎' }))
+      all.push({ titulo: r.name, tipo: 'Carrera Internacional', color: DS.info, colorBg: DS.infoLight, icon: '🌎' }))
     fechasExtras.filter(f => f.fecha === dateStr).forEach(f =>
-      all.push({ titulo: f.nombre, tipo: f.tipo, color: f.tipo === 'carrera' ? DS.danger : DS.warning, badge: f.tipo === 'carrera' ? '🏃' : '📅' }))
+      all.push({ titulo: f.nombre, tipo: f.tipo === 'carrera' ? 'Carrera' : 'Fecha comercial', color: f.tipo === 'carrera' ? DS.danger : DS.warning, colorBg: f.tipo === 'carrera' ? DS.dangerLight : DS.warningLight, icon: f.tipo === 'carrera' ? '🏃' : '📅' }))
     return all
   }
 
@@ -109,125 +111,42 @@ export default function CalendarioPage() {
   async function generarContenidoPieza(ev: Evento) {
     if (!ev.id) return
     setGenerandoId(ev.id)
-
     let estrategiaCampana = ''
     if (ev.campana_id) {
       const r = await fetch('/api/campanas')
       const campanas = await r.json()
       const campana = campanas.find((c: { id: string; output_claude?: string }) => c.id === ev.campana_id)
-      if (campana?.output_claude) estrategiaCampana = campana.output_claude.split('## Plan de contenido')[0].substring(0, 800)
+      if (campana?.output_claude) estrategiaCampana = campana.output_claude.split('## Plan de contenido')[0].substring(0, 600)
     }
-
-    const otrasHoy = eventos
-      .filter(e => e.fecha === ev.fecha && e.id !== ev.id && e.copy_exacto)
-      .map(e => `- ${e.canal} | ${e.tipo_contenido}: ${e.titulo}`)
-      .join('\n')
-
+    const otrasHoy = eventos.filter(e => e.fecha === ev.fecha && e.id !== ev.id && e.copy_exacto).map(e => `- ${e.canal} | ${e.tipo_contenido}: ${e.titulo}`).join('\n')
     const prompt = `Eres el Director de Marketing de Terret, marca colombiana de accesorios para running.
-${estrategiaCampana ? `CONTEXTO DE CAMPAÑA:\n${estrategiaCampana}\n` : ''}
-PIEZA A GENERAR:
-Fecha: ${ev.fecha} | Canal: ${ev.canal} | Tipo: ${ev.tipo_contenido} | Título: ${ev.titulo}
-${otrasHoy ? `OTRAS PIEZAS HOY (no repetir):\n${otrasHoy}` : ''}
-
-COPY EXACTO:
-[Texto completo listo para publicar con hashtags]
-
-GUION:
-[Si es video: Hook(0-3s)→Desarrollo(4-25s)→CTA. Si no aplica: N/A]
-
-MUSICA:
-[Artista - Canción O género + mood]
-
-REFERENCIA VISUAL:
-[Locación, vestuario, iluminación, ángulo]
-
-RESPONSABLE:
-[David / Creadora / Comité]`
-
-    const res = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
-    })
-
-    const reader = res.body!.getReader()
-    const dec = new TextDecoder()
-    let text = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      text += dec.decode(value)
-    }
-
-    const getField = (key: string) => {
-      const match = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i'))
-      return match ? match[1].trim().replace(/^N\/A$/i, '') : ''
-    }
-
-    await fetch('/api/tareas', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: ev.id,
-        copy_exacto: getField('COPY EXACTO'),
-        guion: getField('GUION'),
-        musica_sugerida: getField('MUSICA'),
-        referencia_visual: getField('REFERENCIA VISUAL'),
-        responsable: getField('RESPONSABLE') || 'David',
-      })
-    })
-
-    setGenerandoId(null)
-    setExpandedId(ev.id)
-    load()
+${estrategiaCampana ? `CONTEXTO:\n${estrategiaCampana}\n` : ''}
+PIEZA: ${ev.fecha} | ${ev.canal} | ${ev.tipo_contenido} | ${ev.titulo}
+${otrasHoy ? `OTRAS HOY:\n${otrasHoy}` : ''}
+COPY EXACTO:\n[Caption completo con hashtags]\nGUION:\n[Si video: Hook→Desarrollo→CTA. Si no: N/A]\nMUSICA:\n[Artista/género]\nREFERENCIA VISUAL:\n[Locación, vestuario, luz]\nRESPONSABLE:\n[David/Creadora/Comité]`
+    const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] }) })
+    const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
+    while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value) }
+    const getField = (key: string) => { const m = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i')); return m ? m[1].trim().replace(/^N\/A$/i, '') : '' }
+    await fetch('/api/tareas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, copy_exacto: getField('COPY EXACTO'), guion: getField('GUION'), musica_sugerida: getField('MUSICA'), referencia_visual: getField('REFERENCIA VISUAL'), responsable: getField('RESPONSABLE') || 'David' }) })
+    setGenerandoId(null); setExpandedId(ev.id); load()
   }
 
   async function generarTodoDia(fecha: string) {
     setGenerandoDia(fecha)
-    const sinContenido = eventos.filter(e => e.fecha === fecha && !e.copy_exacto)
-    for (const ev of sinContenido) await generarContenidoPieza(ev)
+    for (const ev of eventos.filter(e => e.fecha === fecha && !e.copy_exacto)) await generarContenidoPieza(ev)
     setGenerandoDia(null)
   }
 
   async function buscarFechasNuevas() {
-    setBuscandoFechas(true)
-    setFechasNuevas([])
-
+    setBuscandoFechas(true); setFechasNuevas([])
     const today = format(new Date(), 'yyyy-MM-dd')
-    const prompt = `Busca en web carreras de running y fechas comerciales relevantes para Colombia en los próximos 6 meses desde ${today}.
-
-Busca: "calendario carreras running Colombia 2026", "maratones Colombia 2026", "fechas comerciales Colombia 2026"
-
-Responde ÚNICAMENTE con un JSON array así (sin texto adicional):
-[
-  {"fecha":"YYYY-MM-DD","nombre":"Nombre del evento","tipo":"carrera","ciudad":"Ciudad","distancia":"42K"},
-  {"fecha":"YYYY-MM-DD","nombre":"Nombre fecha","tipo":"comercial"}
-]
-
-Solo incluye eventos que NO estén ya en esta lista:
-${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n').substring(0, 500)}`
-
-    const res = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] })
-    })
-
-    const reader = res.body!.getReader()
-    const dec = new TextDecoder()
-    let text = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      text += dec.decode(value)
-    }
-
-    try {
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
-      if (Array.isArray(parsed)) {
-        setFechasNuevas(parsed)
-        setShowFechasModal(true)
-      }
-    } catch { /* ignore parse error */ }
-
+    const existentes = [...RACES_CO, ...COMMERCIAL_DATES].map(e => `${e.date}: ${e.name}`).join('\n').substring(0, 400)
+    const prompt = `Busca en web carreras de running y fechas comerciales para Colombia en los próximos 6 meses desde ${today}. Busca: "calendario running Colombia 2026", "maratones Colombia 2026 nuevos". Responde ÚNICAMENTE con JSON array:\n[{"fecha":"YYYY-MM-DD","nombre":"Nombre","tipo":"carrera","ciudad":"Ciudad","distancia":"42K"}]\nNo incluyas estas que ya tenemos:\n${existentes}`
+    const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] }) })
+    const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
+    while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value) }
+    try { const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()); if (Array.isArray(parsed)) { setFechasNuevas(parsed); setShowFechasModal(true) } } catch { /* ignore */ }
     setBuscandoFechas(false)
   }
 
@@ -235,12 +154,11 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
     const nuevas = [...fechasExtras, f]
     setFechasExtras(nuevas)
     localStorage.setItem('terret_fechas_extras', JSON.stringify(nuevas))
-    setFechasNuevas(prev => prev.filter(x => x.fecha !== f.fecha || x.nombre !== f.nombre))
+    setFechasNuevas(prev => prev.filter(x => !(x.fecha === f.fecha && x.nombre === f.nombre)))
   }
 
   const selDbEvs = selDay ? getDbEvs(selDay) : []
   const selStaticEvs = selDay ? getStaticEvs(selDay) : []
-  const selPendientes = selDbEvs.filter(e => !e.copy_exacto)
 
   return (
     <div style={{ maxWidth: 1150, margin: '0 auto' }}>
@@ -250,123 +168,133 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
           <h1 style={{ fontSize: 24, fontWeight: 800, color: DS.text, margin: 0, letterSpacing: '-0.5px' }}>Calendario editorial</h1>
           <p style={{ fontSize: 13, color: DS.textSecondary, margin: '4px 0 0' }}>Tareas, carreras y fechas comerciales.</p>
         </div>
-        <button onClick={buscarFechasNuevas} disabled={buscandoFechas}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', background: DS.text, color: '#fff', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: buscandoFechas ? 'default' : 'pointer', fontFamily: 'inherit', opacity: buscandoFechas ? 0.7 : 1 }}>
-          {buscandoFechas ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
-          {buscandoFechas ? 'Buscando...' : 'Buscar fechas nuevas'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={buscarFechasNuevas} disabled={buscandoFechas}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: DS.surface, color: DS.text, border: `1px solid ${DS.border}`, borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {buscandoFechas ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+            {buscandoFechas ? 'Buscando...' : 'Buscar fechas'}
+          </button>
+        </div>
       </div>
 
       {/* Calendario */}
-      <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        {/* Nav mes */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+      <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        {/* Nav */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${DS.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => setCur(subMonths(cur, 1))}
-              style={{ padding: '6px 10px', border: `1px solid ${DS.border}`, borderRadius: 8, background: DS.surface, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <ChevronLeft size={15} color={DS.textSecondary} />
-            </button>
-            <h2 style={{ fontSize: 16, fontWeight: 700, minWidth: 200, textAlign: 'center', margin: 0, color: DS.text }}>
+            <button onClick={() => setCur(subMonths(cur, 1))} style={{ padding: '6px 10px', border: `1px solid ${DS.border}`, borderRadius: 8, background: DS.surface, cursor: 'pointer' }}><ChevronLeft size={14} color={DS.textSecondary} /></button>
+            <span style={{ fontSize: 15, fontWeight: 700, color: DS.text, minWidth: 180, textAlign: 'center' }}>
               {format(cur, "MMMM 'de' yyyy", { locale: es }).replace(/^\w/, c => c.toUpperCase())}
-            </h2>
-            <button onClick={() => setCur(addMonths(cur, 1))}
-              style={{ padding: '6px 10px', border: `1px solid ${DS.border}`, borderRadius: 8, background: DS.surface, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <ChevronRight size={15} color={DS.textSecondary} />
-            </button>
+            </span>
+            <button onClick={() => setCur(addMonths(cur, 1))} style={{ padding: '6px 10px', border: `1px solid ${DS.border}`, borderRadius: 8, background: DS.surface, cursor: 'pointer' }}><ChevronRight size={14} color={DS.textSecondary} /></button>
           </div>
+
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: 4, background: DS.bg, borderRadius: 8, padding: 3 }}>
+            {([['todo', 'Todo'], ['tareas', 'Solo tareas'], ['fechas', 'Solo fechas']] as [FiltroCalendario, string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setFiltro(val)}
+                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 11, fontWeight: filtro === val ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', background: filtro === val ? DS.surface : 'transparent', color: filtro === val ? DS.text : DS.textSecondary, boxShadow: filtro === val ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* Leyenda */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {[
-              { color: DS.dangerLight, border: DS.danger, label: 'Carrera' },
-              { color: DS.warningLight, border: DS.warning, label: 'Fecha comercial' },
-              { color: '#EDE9FE', border: '#7C3AED', label: 'Contenido' },
-              { color: DS.infoLight, border: DS.info, label: 'Pauta' },
+              { color: DS.danger, label: 'Carrera' },
+              { color: DS.warning, label: 'Fecha' },
+              { color: '#7C3AED', label: 'Contenido' },
+              { color: DS.success, label: 'Publicado' },
             ].map(l => (
-              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: DS.textSecondary }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: l.color, border: `1px solid ${l.border}` }} />
+              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: DS.textTertiary }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: l.color }} />
                 {l.label}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Días de la semana */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
+        {/* Días semana */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: DS.bg, borderBottom: `1px solid ${DS.border}` }}>
           {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: DS.textTertiary, padding: '4px 0', letterSpacing: '0.3px' }}>{d}</div>
+            <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: DS.textTertiary, padding: '8px 0', letterSpacing: '0.5px' }}>{d}</div>
           ))}
         </div>
 
-        {/* Grid días */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
+        {/* Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
           {Array.from({ length: pad }).map((_, i) => (
-            <div key={i} style={{ minHeight: 90, borderRadius: 8, background: DS.bg, opacity: 0.4 }} />
+            <div key={i} style={{ minHeight: 100, background: DS.bg, borderRight: `1px solid ${DS.border}`, borderBottom: `1px solid ${DS.border}`, opacity: 0.4 }} />
           ))}
-          {days.map(day => {
+          {days.map((day, idx) => {
             const ds = format(day, 'yyyy-MM-dd')
-            const dbEvs = getDbEvs(ds)
+            const dbEvs = filtro === 'fechas' ? [] : getDbEvs(ds)
             const staticEvs = getStaticEvs(ds)
+            const total = dbEvs.length
             const sinContenido = dbEvs.filter(e => !e.copy_exacto).length
             const publicados = dbEvs.filter(e => e.estado === 'publicado').length
-            const hasAnything = dbEvs.length > 0 || staticEvs.length > 0
             const today = isToday(day)
+            const col = (idx + pad) % 7
+            const isLastCol = col === 6
 
             return (
               <div key={ds} onClick={() => setSelDay(ds)}
                 style={{
-                  minHeight: 90, borderRadius: 8, padding: '6px 7px', cursor: 'pointer',
-                  background: today ? '#FFF8F5' : DS.surface,
-                  border: today ? `2px solid ${DS.accent}` : `1px solid ${hasAnything ? DS.border : 'transparent'}`,
-                  background: today ? '#FFF8F5' : hasAnything ? DS.surface : DS.bg,
+                  minHeight: 100, cursor: 'pointer', padding: '8px',
+                  background: today ? '#FFFBF8' : DS.surface,
+                  borderRight: isLastCol ? 'none' : `1px solid ${DS.border}`,
+                  borderBottom: `1px solid ${DS.border}`,
+                  outline: today ? `2px solid ${DS.accent}` : 'none',
+                  outlineOffset: '-2px',
+                  transition: 'background 0.1s',
                 }}>
-                {/* Número del día */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: today ? 800 : 500, color: today ? DS.accent : DS.textSecondary }}>
-                    {format(day, 'd')}
-                  </span>
-                  <div style={{ display: 'flex', gap: 2 }}>
-                    {sinContenido > 0 && (
-                      <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{sinContenido}</span>
-                      </div>
-                    )}
-                    {publicados > 0 && sinContenido === 0 && dbEvs.length > 0 && (
-                      <div style={{ width: 14, height: 14, borderRadius: '50%', background: DS.success, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>✓</span>
-                      </div>
-                    )}
-                  </div>
+                {/* Número día */}
+                <div style={{ fontSize: 12, fontWeight: today ? 800 : 500, color: today ? DS.accent : DS.textSecondary, marginBottom: 5 }}>
+                  {format(day, 'd')}
                 </div>
 
-                {/* Eventos estáticos (carreras/fechas) — siempre visibles primero */}
-                {staticEvs.slice(0, 1).map((ev, i) => (
+                {/* Fechas estáticas — siempre primero, compactas */}
+                {staticEvs.map((ev, i) => (
                   <div key={`s${i}`} style={{
-                    fontSize: 8, padding: '2px 5px', borderRadius: 4, marginBottom: 2,
-                    background: ev.tipo === 'carrera' ? DS.dangerLight : ev.tipo === 'intl' ? DS.infoLight : DS.warningLight,
-                    color: ev.tipo === 'carrera' ? DS.danger : ev.tipo === 'intl' ? DS.info : DS.warning,
-                    fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, marginBottom: 2,
+                    background: ev.colorBg, color: ev.color,
+                    overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    display: 'flex', alignItems: 'center', gap: 3,
                   }}>
-                    {ev.badge} {ev.titulo}
+                    <span>{ev.icon}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.titulo}</span>
                   </div>
                 ))}
 
-                {/* Tareas de contenido */}
-                {dbEvs.slice(0, staticEvs.length > 0 ? 2 : 3).map((ev, i) => (
-                  <div key={`d${i}`} style={{
-                    fontSize: 8, padding: '2px 5px', borderRadius: 4, marginBottom: 2,
-                    background: (ev.color || DS.info) + '20',
-                    color: ev.color || DS.info,
-                    fontWeight: 600, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                    opacity: ev.estado === 'publicado' ? 0.5 : 1,
-                  }}>
-                    {CANAL_ICON[ev.canal || ''] || '·'} {ev.titulo}
-                  </div>
-                ))}
-
-                {/* Más eventos */}
-                {(dbEvs.length + staticEvs.length) > (staticEvs.length > 0 ? 3 : 3) && (
-                  <div style={{ fontSize: 8, color: DS.textTertiary, padding: '1px 4px', fontWeight: 600 }}>
-                    +{(dbEvs.length + staticEvs.length) - (staticEvs.length > 0 ? 3 : 3)} más
+                {/* Tareas — solo badges de colores + contador */}
+                {total > 0 && filtro !== 'fechas' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: staticEvs.length > 0 ? 4 : 0 }}>
+                    {/* Dots de canales */}
+                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1 }}>
+                      {dbEvs.slice(0, 6).map((ev, i) => (
+                        <div key={i} style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: ev.estado === 'publicado' ? DS.success : ev.copy_exacto ? (ev.color || DS.info) : '#7C3AED',
+                          opacity: ev.estado === 'publicado' ? 0.6 : 1,
+                          flexShrink: 0,
+                        }} title={ev.titulo} />
+                      ))}
+                      {total > 6 && <span style={{ fontSize: 8, color: DS.textTertiary, fontWeight: 700 }}>+{total - 6}</span>}
+                    </div>
+                    {/* Contador */}
+                    <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                      {sinContenido > 0 && (
+                        <div style={{ background: '#7C3AED', color: '#fff', borderRadius: 10, fontSize: 8, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
+                          {sinContenido}
+                        </div>
+                      )}
+                      {publicados > 0 && (
+                        <div style={{ background: DS.successLight, color: DS.success, borderRadius: 10, fontSize: 8, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
+                          {publicados}✓
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -381,125 +309,86 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
           onClick={() => { setSelDay(null); setExpandedId(null) }}>
           <div style={{ background: DS.surface, borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}
             onClick={e => e.stopPropagation()}>
-
-            {/* Modal header */}
             <div style={{ padding: '18px 22px', borderBottom: `1px solid ${DS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: DS.text }}>
                 {format(parseISO(selDay), "EEEE d 'de' MMMM", { locale: es }).replace(/^\w/, c => c.toUpperCase())}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {selPendientes.length > 0 && !generandoDia && (
+                {selDbEvs.filter(e => !e.copy_exacto).length > 0 && !generandoDia && (
                   <button onClick={() => generarTodoDia(selDay)}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: DS.text, color: '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <Sparkles size={11} /> Generar todo el día
+                    <Sparkles size={11} /> Generar día
                   </button>
                 )}
-                {generandoDia === selDay && (
-                  <span style={{ fontSize: 11, color: DS.info, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Loader2 size={12} className="animate-spin" /> Generando...
-                  </span>
-                )}
-                <button onClick={() => { setSelDay(null); setExpandedId(null) }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: DS.textTertiary, fontSize: 18 }}>✕</button>
+                {generandoDia === selDay && <span style={{ fontSize: 11, color: DS.info, display: 'flex', alignItems: 'center', gap: 5 }}><Loader2 size={12} className="animate-spin" /> Generando...</span>}
+                <button onClick={() => { setSelDay(null); setExpandedId(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: DS.textTertiary, fontSize: 18 }}>✕</button>
               </div>
             </div>
 
             <div style={{ padding: '16px 22px' }}>
-              {/* Fechas estáticas del día */}
+              {/* Fechas estáticas */}
               {selStaticEvs.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>Eventos del día</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {selStaticEvs.map((ev, i) => (
-                      <div key={i} style={{
-                        padding: '10px 14px', borderRadius: 9,
-                        background: ev.tipo === 'carrera' ? DS.dangerLight : ev.tipo === 'intl' ? DS.infoLight : DS.warningLight,
-                        border: `1px solid ${ev.tipo === 'carrera' ? DS.danger : ev.tipo === 'intl' ? DS.info : DS.warning}40`,
-                        display: 'flex', alignItems: 'center', gap: 10,
-                      }}>
-                        <span style={{ fontSize: 16 }}>{ev.badge}</span>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: DS.text }}>{ev.titulo}</div>
-                          <div style={{ fontSize: 10, color: DS.textSecondary, marginTop: 1, textTransform: 'capitalize' }}>{ev.tipo}</div>
-                        </div>
+                  {selStaticEvs.map((ev, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: ev.colorBg, borderRadius: 9, marginBottom: 6, border: `1px solid ${ev.color}30` }}>
+                      <span style={{ fontSize: 18 }}>{ev.icon}</span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: DS.text }}>{ev.titulo}</div>
+                        <div style={{ fontSize: 10, color: ev.color, fontWeight: 600, marginTop: 1 }}>{ev.tipo}</div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* Tareas de contenido */}
+              {/* Tareas */}
               {selDbEvs.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-                    Contenido ({selDbEvs.length} pieza{selDbEvs.length !== 1 ? 's' : ''})
+                    Contenido — {selDbEvs.length} pieza{selDbEvs.length !== 1 ? 's' : ''}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {selDbEvs.map((ev, i) => {
                       const isExpanded = expandedId === ev.id
                       const isGenerando = generandoId === ev.id
                       const tieneCopy = !!ev.copy_exacto
-
                       return (
                         <div key={i} style={{ borderRadius: 10, border: `1px solid ${DS.border}`, borderLeft: `3px solid ${ev.color || DS.info}`, overflow: 'hidden' }}>
-                          <div style={{ padding: '12px 14px' }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: DS.text }}>{ev.titulo}</div>
-                                <div style={{ fontSize: 10, color: DS.textSecondary, marginTop: 2 }}>
-                                  {ev.canal && `${CANAL_ICON[ev.canal] || ''} ${ev.canal}`}
-                                  {ev.tipo_contenido && ` · ${ev.tipo_contenido}`}
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
-                                {ev.id && !isGenerando && (
-                                  <button onClick={() => generarContenidoPieza(ev)}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', background: tieneCopy ? DS.bg : '#7C3AED', color: tieneCopy ? DS.textSecondary : '#fff', border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                                    <Sparkles size={9} />{tieneCopy ? 'Regen.' : 'Generar'}
-                                  </button>
-                                )}
-                                {isGenerando && <Loader2 size={13} className="animate-spin" style={{ color: '#7C3AED' }} />}
-                                {ev.id && ev.estado !== 'publicado' && (
-                                  <button onClick={() => cambiarEstado(ev.id!, ev.estado === 'pendiente' ? 'en_progreso' : ev.estado === 'en_progreso' ? 'en_revision' : 'publicado')}
-                                    style={{ padding: '5px 9px', background: DS.bg, border: 'none', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: DS.text }}>
-                                    {ev.estado === 'pendiente' ? '▶' : ev.estado === 'en_progreso' ? '👁' : '✓'}
-                                  </button>
-                                )}
-                                {ev.estado === 'publicado' && <span style={{ fontSize: 10, color: DS.success, fontWeight: 700 }}>✓</span>}
-                                {tieneCopy && ev.id && (
-                                  <button onClick={() => setExpandedId(isExpanded ? null : ev.id!)}
-                                    style={{ fontSize: 11, color: DS.info, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '4px' }}>
-                                    {isExpanded ? '▲' : '▼'}
-                                  </button>
-                                )}
-                              </div>
+                          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 14, flexShrink: 0 }}>{CANAL_ICON[ev.canal || ''] || '·'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: DS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.titulo}</div>
+                              <div style={{ fontSize: 10, color: DS.textSecondary, marginTop: 1 }}>{ev.canal}{ev.tipo_contenido && ` · ${ev.tipo_contenido}`}</div>
                             </div>
-
-                            {/* Estado badge */}
-                            <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-                              {ev.responsable && (
-                                <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 20, background: ev.responsable === 'Creadora' ? '#F3E8FF' : DS.infoLight, color: ev.responsable === 'Creadora' ? '#7C3AED' : DS.info }}>
-                                  {ev.responsable}
-                                </span>
-                              )}
-                              <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 20, background: ev.estado === 'publicado' ? DS.successLight : ev.estado === 'en_revision' ? DS.warningLight : ev.estado === 'en_progreso' ? DS.infoLight : DS.bg, color: ev.estado === 'publicado' ? DS.success : ev.estado === 'en_revision' ? DS.warning : ev.estado === 'en_progreso' ? DS.info : DS.textSecondary }}>
+                            <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
+                              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 10, fontWeight: 700, background: ev.estado === 'publicado' ? DS.successLight : ev.estado === 'en_revision' ? DS.warningLight : ev.estado === 'en_progreso' ? DS.infoLight : DS.bg, color: ev.estado === 'publicado' ? DS.success : ev.estado === 'en_revision' ? DS.warning : ev.estado === 'en_progreso' ? DS.info : DS.textSecondary }}>
                                 {ev.estado || 'pendiente'}
                               </span>
-                              {!tieneCopy && (
-                                <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 20, background: '#EDE9FE', color: '#7C3AED' }}>Sin contenido</span>
+                              {ev.id && !isGenerando && (
+                                <button onClick={() => generarContenidoPieza(ev)}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 8px', background: tieneCopy ? DS.bg : '#7C3AED', color: tieneCopy ? DS.textSecondary : '#fff', border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                  <Sparkles size={9} />{tieneCopy ? 'Regen.' : 'Generar'}
+                                </button>
+                              )}
+                              {isGenerando && <Loader2 size={12} className="animate-spin" style={{ color: '#7C3AED' }} />}
+                              {ev.id && ev.estado !== 'publicado' && !isGenerando && (
+                                <button onClick={() => cambiarEstado(ev.id!, ev.estado === 'pendiente' ? 'en_progreso' : ev.estado === 'en_progreso' ? 'en_revision' : 'publicado')}
+                                  style={{ padding: '4px 8px', background: DS.bg, border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: DS.text }}>
+                                  {ev.estado === 'pendiente' ? '▶' : ev.estado === 'en_progreso' ? '👁' : '✓'}
+                                </button>
+                              )}
+                              {tieneCopy && ev.id && (
+                                <button onClick={() => setExpandedId(isExpanded ? null : ev.id!)}
+                                  style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: DS.info, fontSize: 11, fontWeight: 700 }}>
+                                  {isExpanded ? '▲' : '▼'}
+                                </button>
                               )}
                             </div>
                           </div>
-
-                          {/* Contenido expandido */}
                           {isExpanded && tieneCopy && (
                             <div style={{ padding: '12px 14px', background: DS.bg, borderTop: `1px solid ${DS.border}` }}>
-                              {[
-                                { label: 'Copy', value: ev.copy_exacto },
-                                { label: 'Guión', value: ev.guion },
-                                { label: 'Música', value: ev.musica_sugerida },
-                                { label: 'Referencia visual', value: ev.referencia_visual },
-                              ].filter(f => f.value).map(field => (
+                              {[{ label: 'Copy', value: ev.copy_exacto }, { label: 'Guión', value: ev.guion }, { label: 'Música', value: ev.musica_sugerida }, { label: 'Referencia visual', value: ev.referencia_visual }].filter(f => f.value).map(field => (
                                 <div key={field.label} style={{ marginBottom: 10 }}>
                                   <div style={{ fontSize: 9, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{field.label}</div>
                                   <div style={{ fontSize: 12, color: DS.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 7, padding: '8px 10px' }}>{field.value}</div>
@@ -519,7 +408,7 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
               )}
 
               <button onClick={() => setAddOpen(true)}
-                style={{ width: '100%', padding: '9px', border: `1px dashed ${DS.border}`, borderRadius: 8, fontSize: 12, color: DS.textSecondary, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', marginTop: 4 }}>
+                style={{ width: '100%', padding: '9px', border: `1px dashed ${DS.border}`, borderRadius: 8, fontSize: 12, color: DS.textSecondary, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', marginTop: 8 }}>
                 <Plus size={13} /> Agregar evento manual
               </button>
             </div>
@@ -527,31 +416,21 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
         </div>
       )}
 
-      {/* Modal agregar evento */}
+      {/* Modal agregar */}
       {addOpen && selDay && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}
-          onClick={() => setAddOpen(false)}>
-          <div style={{ background: DS.surface, borderRadius: 14, padding: 24, width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: DS.text, marginBottom: 16 }}>
-              Agregar — {format(parseISO(selDay), "d 'de' MMMM", { locale: es })}
-            </div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }} onClick={() => setAddOpen(false)}>
+          <div style={{ background: DS.surface, borderRadius: 14, padding: 24, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: DS.text, marginBottom: 16 }}>Agregar — {format(parseISO(selDay), "d 'de' MMMM", { locale: es })}</div>
             {[['Título *', 'titulo', 'Ej: Reel tobilleras'], ['Canal', 'canal', 'Instagram, TikTok...'], ['Descripción', 'descripcion', 'Detalles...']].map(([l, k, p]) => (
               <div key={k} style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>{l}</label>
                 <input value={(form as Record<string, string>)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} placeholder={p}
-                  style={{ width: '100%', padding: '9px 12px', border: `1px solid ${DS.border}`, borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: DS.surface, color: DS.text }} />
+                  style={{ width: '100%', padding: '9px 12px', border: `1px solid ${DS.border}`, borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setAddOpen(false)}
-                style={{ flex: 1, padding: '10px', border: `1px solid ${DS.border}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: DS.surface, color: DS.textSecondary }}>
-                Cancelar
-              </button>
-              <button onClick={saveEv}
-                style={{ flex: 2, padding: '10px', background: DS.text, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Guardar
-              </button>
+              <button onClick={() => setAddOpen(false)} style={{ flex: 1, padding: 10, border: `1px solid ${DS.border}`, borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: DS.surface, color: DS.textSecondary }}>Cancelar</button>
+              <button onClick={saveEv} style={{ flex: 2, padding: 10, background: DS.text, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Guardar</button>
             </div>
           </div>
         </div>
@@ -559,37 +438,24 @@ ${[...RACES_CO, ...COMMERCIAL_DATES].map(e => `- ${e.date}: ${e.name}`).join('\n
 
       {/* Modal fechas nuevas */}
       {showFechasModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}
-          onClick={() => setShowFechasModal(false)}>
-          <div style={{ background: DS.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 500, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}
-            onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }} onClick={() => setShowFechasModal(false)}>
+          <div style={{ background: DS.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 500, maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: DS.text }}>Fechas encontradas</div>
               <button onClick={() => setShowFechasModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: DS.textTertiary, fontSize: 18 }}>✕</button>
             </div>
             {fechasNuevas.length === 0 ? (
-              <div style={{ padding: '20px 0', textAlign: 'center', color: DS.textTertiary, fontSize: 13 }}>
-                No se encontraron fechas nuevas.
+              <div style={{ padding: '20px 0', textAlign: 'center', color: DS.textTertiary }}>No se encontraron fechas nuevas.</div>
+            ) : fechasNuevas.map((f, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: DS.bg, borderRadius: 10, border: `1px solid ${DS.border}`, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>{f.tipo === 'carrera' ? '🏃' : '📅'}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: DS.text }}>{f.nombre}</div>
+                  <div style={{ fontSize: 11, color: DS.textSecondary, marginTop: 2 }}>{f.fecha}{f.ciudad && ` · ${f.ciudad}`}{f.distancia && ` · ${f.distancia}`}</div>
+                </div>
+                <button onClick={() => agregarFecha(f)} style={{ padding: '6px 12px', background: DS.success, color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>+ Agregar</button>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {fechasNuevas.map((f, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: DS.bg, borderRadius: 10, border: `1px solid ${DS.border}` }}>
-                    <span style={{ fontSize: 18 }}>{f.tipo === 'carrera' ? '🏃' : '📅'}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: DS.text }}>{f.nombre}</div>
-                      <div style={{ fontSize: 11, color: DS.textSecondary, marginTop: 2 }}>
-                        {f.fecha} {f.ciudad && `· ${f.ciudad}`} {f.distancia && `· ${f.distancia}`}
-                      </div>
-                    </div>
-                    <button onClick={() => agregarFecha(f)}
-                      style={{ padding: '6px 12px', background: DS.success, color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      + Agregar
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
         </div>
       )}
