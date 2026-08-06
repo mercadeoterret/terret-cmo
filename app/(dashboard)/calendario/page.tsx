@@ -1,4 +1,6 @@
 'use client'
+import React from 'react'
+'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO, addMonths, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -17,7 +19,7 @@ const DS = {
 
 function CanalIcon({ canal, size = 14, opacity = 1 }: { canal: string; size?: number; opacity?: number }) {
   const s = size
-  const icons: Record<string, JSX.Element> = {
+  const icons: Record<string, React.ReactElement> = {
     'Instagram': <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><defs><radialGradient id="ig" cx="30%" cy="107%" r="150%"><stop offset="0%" stopColor="#fdf497"/><stop offset="20%" stopColor="#fd5949"/><stop offset="60%" stopColor="#d6249f"/><stop offset="100%" stopColor="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig)"/><circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>,
     'Instagram orgánico': <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><defs><radialGradient id="ig2" cx="30%" cy="107%" r="150%"><stop offset="0%" stopColor="#fdf497"/><stop offset="20%" stopColor="#fd5949"/><stop offset="60%" stopColor="#d6249f"/><stop offset="100%" stopColor="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig2)"/><circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>,
     'TikTok': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#010101"/><path d="M16.5 7.5c-.8-.5-1.4-1.3-1.6-2.2h-2v9.5c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2c.2 0 .4 0 .6.1V10.6c-.2 0-.4-.1-.6-.1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V9.2c.8.5 1.8.8 2.8.8V7.8c-.4 0-.8-.1-1.2-.3z" fill="white"/></svg>,
