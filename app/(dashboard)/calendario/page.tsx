@@ -15,6 +15,21 @@ const DS = {
   info: '#185FA5', infoLight: '#EBF3FC',
 }
 
+const CANAL_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  'Instagram': { label: 'IG', bg: '#F3E8FF', color: '#7C3AED' },
+  'Instagram orgánico': { label: 'IG', bg: '#F3E8FF', color: '#7C3AED' },
+  'TikTok': { label: 'TK', bg: '#E0F7FA', color: '#006064' },
+  'TikTok orgánico': { label: 'TK', bg: '#E0F7FA', color: '#006064' },
+  'Meta Ads': { label: 'MA', bg: '#EBF3FC', color: '#185FA5' },
+  'Google Ads': { label: 'GA', bg: '#E8F5E9', color: '#1B5E20' },
+  'Email': { label: 'EM', bg: '#E8F5EE', color: '#1A7A4A' },
+  'Email marketing': { label: 'EM', bg: '#E8F5EE', color: '#1A7A4A' },
+  'Shopify Email': { label: 'EM', bg: '#E8F5EE', color: '#1A7A4A' },
+  'WhatsApp': { label: 'WA', bg: '#E8F5EE', color: '#1A7A4A' },
+  'WhatsApp / estados': { label: 'WA', bg: '#DCFCE7', color: '#15803D' },
+  'Influencers / UGC': { label: 'UG', bg: '#FEF3C7', color: '#B45309' },
+}
+
 const CANAL_ICON: Record<string, string> = {
   'Instagram': '📸', 'Instagram orgánico': '📸', 'TikTok': '🎵', 'TikTok orgánico': '🎵',
   'Meta Ads': '💰', 'Google Ads': '🔍', 'Email': '📧', 'Email marketing': '📧',
@@ -278,17 +293,21 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                 {/* Tareas — solo badges de colores + contador */}
                 {total > 0 && filtro !== 'fechas' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: staticEvs.length > 0 ? 4 : 0 }}>
-                    {/* Iconos de canal */}
+                    {/* Badges de canal */}
                     <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1 }}>
-                      {dbEvs.slice(0, 5).map((ev, i) => (
-                        <span key={i} style={{
-                          fontSize: 10, lineHeight: 1,
-                          opacity: ev.estado === 'publicado' ? 0.4 : 1,
-                          filter: ev.estado === 'publicado' ? 'grayscale(1)' : 'none',
-                        }} title={ev.titulo}>
-                          {CANAL_ICON[ev.canal || ''] || '·'}
-                        </span>
-                      ))}
+                      {dbEvs.slice(0, 5).map((ev, i) => {
+                        const badge = CANAL_BADGE[ev.canal || ''] || { label: ev.canal?.substring(0, 2).toUpperCase() || '??', bg: DS.bg, color: DS.textSecondary }
+                        return (
+                          <span key={i} title={ev.titulo} style={{
+                            fontSize: 7, fontWeight: 800, padding: '1px 3px', borderRadius: 3,
+                            background: badge.bg, color: badge.color,
+                            opacity: ev.estado === 'publicado' ? 0.4 : 1,
+                            letterSpacing: '0.3px', lineHeight: 1.4, flexShrink: 0,
+                          }}>
+                            {badge.label}
+                          </span>
+                        )
+                      })}
                       {total > 5 && <span style={{ fontSize: 8, color: DS.textTertiary, fontWeight: 700 }}>+{total - 5}</span>}
                     </div>
                     {/* Contador */}
