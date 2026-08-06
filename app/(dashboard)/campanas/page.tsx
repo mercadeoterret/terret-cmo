@@ -545,10 +545,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
               <div>
                 <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#9B9890', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Contexto adicional para el CMO</label>
                 <textarea value={investigarContexto} onChange={e => setInvestigarContexto(e.target.value)} rows={4}
-                  placeholder={'Ej: "Tenemos stock alto de cinturones, prioriza ese producto"
-"No usar el concepto del maratón, ya lo trabajamos mucho"
-"Esta semana hay descuento del 20% en medias"
-"Solo contenido orgánico, sin pauta esta semana"'}
+                  placeholder="Ej: Tenemos stock alto de cinturones, prioriza ese producto. No usar el concepto del maratón. Esta semana hay descuento del 20% en medias. Solo contenido orgánico, sin pauta esta semana."
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E2D9', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', resize: 'none', lineHeight: 1.5 }} />
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
