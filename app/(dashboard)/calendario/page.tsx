@@ -15,6 +15,25 @@ const DS = {
   info: '#185FA5', infoLight: '#EBF3FC',
 }
 
+function CanalIcon({ canal, size = 14, opacity = 1 }: { canal: string; size?: number; opacity?: number }) {
+  const s = size
+  const icons: Record<string, JSX.Element> = {
+    'Instagram': <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><defs><radialGradient id="ig" cx="30%" cy="107%" r="150%"><stop offset="0%" stopColor="#fdf497"/><stop offset="20%" stopColor="#fd5949"/><stop offset="60%" stopColor="#d6249f"/><stop offset="100%" stopColor="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig)"/><circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>,
+    'Instagram orgánico': <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><defs><radialGradient id="ig2" cx="30%" cy="107%" r="150%"><stop offset="0%" stopColor="#fdf497"/><stop offset="20%" stopColor="#fd5949"/><stop offset="60%" stopColor="#d6249f"/><stop offset="100%" stopColor="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig2)"/><circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>,
+    'TikTok': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#010101"/><path d="M16.5 7.5c-.8-.5-1.4-1.3-1.6-2.2h-2v9.5c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2c.2 0 .4 0 .6.1V10.6c-.2 0-.4-.1-.6-.1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V9.2c.8.5 1.8.8 2.8.8V7.8c-.4 0-.8-.1-1.2-.3z" fill="white"/></svg>,
+    'TikTok orgánico': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#010101"/><path d="M16.5 7.5c-.8-.5-1.4-1.3-1.6-2.2h-2v9.5c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2c.2 0 .4 0 .6.1V10.6c-.2 0-.4-.1-.6-.1-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V9.2c.8.5 1.8.8 2.8.8V7.8c-.4 0-.8-.1-1.2-.3z" fill="white"/></svg>,
+    'Meta Ads': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#1877F2"/><path d="M13 21v-7h2.3l.3-2.7H13v-1.7c0-.8.2-1.3 1.3-1.3H16V5.1c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8V11H8v2.7h2.1V21H13z" fill="white"/></svg>,
+    'Google Ads': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="white" stroke="#E5E2D9"/><path d="M12 5C8.13 5 5 8.13 5 12s3.13 7 7 7 7-3.13 7-7h-7V5z" fill="#4285F4"/><path d="M19 12c0-1.11-.26-2.16-.72-3.1L14 12h5z" fill="#EA4335"/><path d="M5 12c0 1.94.78 3.7 2.05 4.95L12 12H5z" fill="#34A853"/><path d="M12 19c1.94 0 3.7-.78 4.95-2.05L12 12v7z" fill="#FBBC05"/></svg>,
+    'WhatsApp': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#25D366"/><path d="M12 4.5C7.86 4.5 4.5 7.86 4.5 12c0 1.3.32 2.53.88 3.6L4.5 19.5l3.97-.87A7.44 7.44 0 0012 19.5c4.14 0 7.5-3.36 7.5-7.5S16.14 4.5 12 4.5zm3.6 10.5c-.15.42-1.1.84-1.5.87-.36.03-.84.04-1.35-.08-.31-.08-.71-.2-1.22-.44-2.1-.94-3.47-3.04-3.58-3.18-.1-.14-.87-1.16-.87-2.21 0-1.05.55-1.57.74-1.78.2-.21.43-.26.57-.26h.41c.13 0 .31.05.48.46l.69 1.7c.05.14.03.3-.05.43l-.3.44c-.1.14-.2.3-.08.58.41.93 1.07 1.65 1.92 2.12.27.14.48.12.65-.05l.35-.44c.17-.22.38-.27.62-.17l1.6.75c.23.11.38.16.44.27.06.1.06.56-.1.98z" fill="white"/></svg>,
+    'WhatsApp / estados': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#25D366"/><path d="M12 4.5C7.86 4.5 4.5 7.86 4.5 12c0 1.3.32 2.53.88 3.6L4.5 19.5l3.97-.87A7.44 7.44 0 0012 19.5c4.14 0 7.5-3.36 7.5-7.5S16.14 4.5 12 4.5zm3.6 10.5c-.15.42-1.1.84-1.5.87-.36.03-.84.04-1.35-.08-.31-.08-.71-.2-1.22-.44-2.1-.94-3.47-3.04-3.58-3.18-.1-.14-.87-1.16-.87-2.21 0-1.05.55-1.57.74-1.78.2-.21.43-.26.57-.26h.41c.13 0 .31.05.48.46l.69 1.7c.05.14.03.3-.05.43l-.3.44c-.1.14-.2.3-.08.58.41.93 1.07 1.65 1.92 2.12.27.14.48.12.65-.05l.35-.44c.17-.22.38-.27.62-.17l1.6.75c.23.11.38.16.44.27.06.1.06.56-.1.98z" fill="white"/></svg>,
+    'Email': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#1A7A4A"/><path d="M6 8h12c.55 0 1 .45 1 1v6c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1zm6 5l6-4H6l6 4z" fill="white"/></svg>,
+    'Email marketing': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#1A7A4A"/><path d="M6 8h12c.55 0 1 .45 1 1v6c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1zm6 5l6-4H6l6 4z" fill="white"/></svg>,
+    'Shopify Email': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#96BF48"/><path d="M15.5 6.5c-.1-.7-.7-1-1.2-1.1l-.4 1.9c.5.1.9.1 1.1.1.2-.3.6-.6.5-.9zm-2 .2l-.5 2.2c-.5-.2-1-.3-1.5-.3-.9 0-1.4.5-1.4 1.1 0 1.3 3.3 1.7 3.3 4.2 0 2.1-1.4 3.2-3.2 3.2-2.3 0-3.5-1.4-3.5-1.4l.6-2c0 0 1.1 1 1.9 1 .5 0 .7-.4.7-.7 0-1.7-3-1.7-3-4 0-2 1.4-3.9 4-3.9.8 0 1.7.2 2.6.6z" fill="white"/></svg>,
+    'Influencers / UGC': <svg width={s} height={s} viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#B45309"/><circle cx="12" cy="9" r="3" fill="white"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6H6z" fill="white"/></svg>,
+  }
+  return <span style={{ opacity, display: 'inline-flex', flexShrink: 0 }} title={canal}>{icons[canal] || <span style={{ fontSize: 7, fontWeight: 800, padding: '1px 3px', borderRadius: 3, background: '#F2F0EA', color: '#6B6860' }}>{canal?.substring(0,2).toUpperCase()}</span>}</span>
+}
+
 const CANAL_BADGE: Record<string, { label: string; bg: string; color: string }> = {
   'Instagram': { label: 'IG', bg: '#F3E8FF', color: '#7C3AED' },
   'Instagram orgánico': { label: 'IG', bg: '#F3E8FF', color: '#7C3AED' },
@@ -293,21 +312,11 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                 {/* Tareas — solo badges de colores + contador */}
                 {total > 0 && filtro !== 'fechas' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: staticEvs.length > 0 ? 4 : 0 }}>
-                    {/* Badges de canal */}
-                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1 }}>
-                      {dbEvs.slice(0, 5).map((ev, i) => {
-                        const badge = CANAL_BADGE[ev.canal || ''] || { label: ev.canal?.substring(0, 2).toUpperCase() || '??', bg: DS.bg, color: DS.textSecondary }
-                        return (
-                          <span key={i} title={ev.titulo} style={{
-                            fontSize: 7, fontWeight: 800, padding: '1px 3px', borderRadius: 3,
-                            background: badge.bg, color: badge.color,
-                            opacity: ev.estado === 'publicado' ? 0.4 : 1,
-                            letterSpacing: '0.3px', lineHeight: 1.4, flexShrink: 0,
-                          }}>
-                            {badge.label}
-                          </span>
-                        )
-                      })}
+                    {/* Iconos SVG de canal */}
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', flex: 1, alignItems: 'center' }}>
+                      {dbEvs.slice(0, 5).map((ev, i) => (
+                        <CanalIcon key={i} canal={ev.canal || ''} size={14} opacity={ev.estado === 'publicado' ? 0.35 : 1} />
+                      ))}
                       {total > 5 && <span style={{ fontSize: 8, color: DS.textTertiary, fontWeight: 700 }}>+{total - 5}</span>}
                     </div>
                     {/* Contador */}
