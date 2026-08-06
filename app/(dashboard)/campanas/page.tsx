@@ -655,7 +655,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
               {openEstrategia === s.key ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
             </button>
             {openEstrategia === s.key && (
-              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 500, overflowY: 'auto' }}>
+              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 9999, overflowY: 'auto' }}>
                 {s.content}
               </div>
             )}
