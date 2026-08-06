@@ -199,7 +199,7 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
     try {
       const clean = text.replace(/```json|```/g, '').trim()
       // Intentar extraer JSON si hay texto extra
-      const jsonMatch = clean.match(/\[.*\]/s)
+      const jsonMatch = clean.match(/\[[\s\S]*\]/)
       const jsonStr = jsonMatch ? jsonMatch[0] : clean
       const parsed = JSON.parse(jsonStr)
       if (Array.isArray(parsed) && parsed.length > 0) {
