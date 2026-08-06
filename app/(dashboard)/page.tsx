@@ -40,6 +40,8 @@ export default function HomePage() {
   const [tareasVencidas, setTareasVencidas] = useState<Tarea[]>([])
   const [insight, setInsight] = useState('')
   const [loadingInsight, setLoadingInsight] = useState(false)
+  const [historialInsights, setHistorialInsights] = useState<{id: string; contenido: string; tipo: string; created_at: string}[]>([])
+  const [showHistorial, setShowHistorial] = useState(false)
   const [campanas, setCampanas] = useState<{ id: string; nombre: string; fecha_inicio: string; fecha_fin: string }[]>([])
   const [metricasResumen, setMetricasResumen] = useState<MetricasResumen | null>(null)
 
@@ -57,6 +59,7 @@ export default function HomePage() {
     })
     fetch('/api/campanas').then(r => r.json()).then(d => { if (Array.isArray(d)) setCampanas(d.slice(0, 3)) })
     fetch('/api/metricas-resumen').then(r => r.json()).then(d => { if (d.piezas !== undefined) setMetricasResumen(d) })
+    fetch('/api/insights').then(r => r.json()).then(d => { if (Array.isArray(d)) setHistorialInsights(d) })
   }, [])
 
   const proximas = [...RACES_CO.filter(r => r.date >= todayStr), ...COMMERCIAL_DATES.filter(f => f.date >= todayStr)]
@@ -74,6 +77,12 @@ export default function HomePage() {
     const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
     while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value); setInsight(text) }
     setLoadingInsight(false)
+    // Guardar en Supabase
+    if (text) {
+      fetch('/api/insights', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contenido: text, tipo: 'manual' }) })
+        .then(r => r.json())
+        .then(d => { if (d.id) setHistorialInsights(prev => [d, ...prev.slice(0, 19)]) })
+    }
   }
 
   const roasColor = (v: number) => v >= 7 ? DS.success : v >= 5 ? DS.warning : v > 0 ? DS.danger : DS.textTertiary
@@ -278,7 +287,15 @@ export default function HomePage() {
       {/* Insight del CMO */}
       <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: insight ? 12 : 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: DS.text }}>Insight del CMO</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: DS.text }}>Insight del CMO</div>
+            {historialInsights.length > 0 && (
+              <button onClick={() => setShowHistorial(!showHistorial)}
+                style={{ fontSize: 11, color: DS.info, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                {showHistorial ? 'Ocultar historial' : `Ver historial (${historialInsights.length})`}
+              </button>
+            )}
+          </div>
           <button onClick={loadInsight} disabled={loadingInsight}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: DS.accentLight, color: DS.accent, border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
             {loadingInsight ? <Loader2 size={12} className="animate-spin" /> : '✦'}
@@ -293,6 +310,23 @@ export default function HomePage() {
         {!insight && !loadingInsight && (
           <div style={{ fontSize: 12, color: DS.textTertiary, marginTop: 8 }}>
             Haz clic en "Nuevo análisis" para que el CMO evalúe la situación actual.
+          </div>
+        )}
+
+        {showHistorial && historialInsights.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${DS.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: DS.textTertiary, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Historial de insights</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {historialInsights.map(h => (
+                <div key={h.id} style={{ background: DS.bg, borderRadius: 10, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: DS.textTertiary, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{new Date(h.created_at).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span>
+                    <span style={{ padding: '1px 6px', borderRadius: 4, background: h.tipo === 'automatico' ? DS.infoLight : DS.accentLight, color: h.tipo === 'automatico' ? DS.info : DS.accent, fontWeight: 700 }}>{h.tipo === 'automatico' ? '🤖 Auto' : '✋ Manual'}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: DS.textSecondary, lineHeight: 1.6 }}>{h.contenido}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
