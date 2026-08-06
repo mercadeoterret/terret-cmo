@@ -569,10 +569,26 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
 
       {investigando && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 40, textAlign: 'center', maxWidth: 400 }}>
-            <div style={{ fontSize: 32, marginBottom: 16 }}>🔍</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a18', marginBottom: 8 }}>El CMO está investigando...</div>
-            <div style={{ fontSize: 13, color: '#6b6a63', lineHeight: 1.6 }}>{investigacionLog}</div>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 36, textAlign: 'center', maxWidth: 440, width: '90%' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🤖</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#1C1B18', marginBottom: 4 }}>El CMO está trabajando</div>
+            <div style={{ fontSize: 12, color: '#6B6860', marginBottom: 20, minHeight: 18 }}>{investigacionLog || 'Iniciando...'}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, textAlign: 'left' }}>
+              {[
+                { label: '🔍 Investigación y competencia', activa: investigacionLog?.includes('Investigando') && !investigacionLog?.includes('Generando'), done: investigacionLog?.includes('Generando') || investigacionLog?.includes('Creando') || investigacionLog?.includes('Guardando') || investigacionLog?.includes('✓') || investigacionLog?.includes('piezas') },
+                { label: '🎯 Estrategia de campaña', activa: investigacionLog?.includes('Generando'), done: investigacionLog?.includes('Creando') || investigacionLog?.includes('Guardando') || investigacionLog?.includes('✓') || investigacionLog?.includes('piezas') },
+                { label: '📋 Plan de contenido', activa: investigacionLog?.includes('Creando'), done: investigacionLog?.includes('Guardando') || investigacionLog?.includes('✓') || investigacionLog?.includes('piezas') },
+                { label: '💾 Guardando campaña', activa: investigacionLog?.includes('Guardando'), done: investigacionLog?.includes('✓') || investigacionLog?.includes('piezas') },
+              ].map((fase, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: fase.activa ? '#EBF3FC' : fase.done ? '#E8F5EE' : '#F2F0EA' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: fase.activa ? '#185FA5' : fase.done ? '#1A7A4A' : '#E5E2D9' }}>
+                    <span style={{ fontSize: 10, color: '#fff', fontWeight: 700 }}>{fase.done ? '✓' : i + 1}</span>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: fase.activa || fase.done ? 600 : 400, color: fase.activa ? '#185FA5' : fase.done ? '#1A7A4A' : '#9B9890' }}>{fase.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: '#9B9890' }}>Este proceso toma 2-4 minutos</div>
           </div>
         </div>
       )}
