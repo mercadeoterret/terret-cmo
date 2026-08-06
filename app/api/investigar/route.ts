@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
     const investigacionRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4000,
-      system,
       tools: [{
         type: 'web_search_20250305' as const,
         name: 'web_search',
