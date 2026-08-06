@@ -45,9 +45,10 @@ export async function POST(req: NextRequest) {
         type: 'web_search_20250305' as const,
         name: 'web_search',
       }],
-      messages: [{
+      system: 'Eres el Director de Marketing de Terret, marca colombiana de accesorios para running. Investiga y responde con datos concretos. Nunca pidas información adicional.',
+    messages: [{
         role: 'user',
-        content: `Eres el Director de Marketing de Terret, marca colombiana de accesorios para running (medias de compresión, cinturones, viseras). Hoy es ${todayStr}.
+        content: `Investiga lo siguiente para Terret, marca colombiana de accesorios para running (medias de compresión, cinturones, viseras). Hoy es ${todayStr}.
 
 CONTEXTO:
 - Carreras próximas (60 días): ${proximasCarreras.length ? proximasCarreras.map(r => `${r.date}: ${r.name} (${r.city})`).join(', ') : 'Ninguna registrada'}
