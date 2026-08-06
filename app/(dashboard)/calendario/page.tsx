@@ -123,12 +123,20 @@ export default function CalendarioPage() {
 ${estrategiaCampana ? `CONTEXTO:\n${estrategiaCampana}\n` : ''}
 PIEZA: ${ev.fecha} | ${ev.canal} | ${ev.tipo_contenido} | ${ev.titulo}
 ${otrasHoy ? `OTRAS HOY:\n${otrasHoy}` : ''}
-COPY EXACTO:\n[Caption completo con hashtags]\nGUION:\n[Si video: Hook→Desarrollo→CTA. Si no: N/A]\nMUSICA:\n[Artista/género]\nREFERENCIA VISUAL:\n[Locación, vestuario, luz]\nRESPONSABLE:\n[David/Creadora/Comité]`
+Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
+{"copy_exacto":"[caption completo con hashtags]","guion":"[si video: Hook 0-3s → Desarrollo → CTA. Si no aplica: vacío]","musica_sugerida":"[artista - canción o género + mood]","referencia_visual":"[locación, vestuario, iluminación, ángulo]","responsable":"[David o Creadora o Comité]"}`
     const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] }) })
     const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
     while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value) }
-    const getField = (key: string) => { const m = text.match(new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n[A-ZÁÉÍÓÚ ]+:|$)`, 'i')); return m ? m[1].trim().replace(/^N\/A$/i, '') : '' }
-    await fetch('/api/tareas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, copy_exacto: getField('COPY EXACTO'), guion: getField('GUION'), musica_sugerida: getField('MUSICA'), referencia_visual: getField('REFERENCIA VISUAL'), responsable: getField('RESPONSABLE') || 'David' }) })
+    let campos = { copy_exacto: '', guion: '', musica_sugerida: '', referencia_visual: '', responsable: 'David' }
+    try {
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      campos = { ...campos, ...parsed }
+    } catch {
+      campos.copy_exacto = text.trim()
+    }
+    await fetch('/api/tareas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ev.id, ...campos }) })
     setGenerandoId(null); setExpandedId(ev.id); load()
   }
 
