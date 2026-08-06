@@ -217,7 +217,7 @@ NOTAS: ${ctx.notas || 'Ninguna'}`
     setEstrategiaLoading(true)
     setEstrategia('')
     setEstrategiaDone(false)
-    setOpenEstrategia(true)
+    setOpenEstrategia('estrategia')
     const prompt = `${getBase()}
 
 Genera la ESTRATEGIA COMPLETA de la campaña:
@@ -613,7 +613,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
         {/* Estrategia colapsable */}
         {estrategiaTexto && (
           <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 16 }}>
-            <button onClick={() => setOpenEstrategia(!openEstrategia)}
+            <button onClick={() => setOpenEstrategia(openEstrategia ? null : 'estrategia')}
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>🎯 Estrategia y narrativa</span>
               {openEstrategia ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -826,7 +826,7 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {estrategiaDone && <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={13} /> Completada</span>}
                 {!estrategiaLoading && <button onClick={generarEstrategia} style={{ padding: '7px 14px', background: estrategiaDone ? '#f0efe8' : '#1a1a18', color: estrategiaDone ? '#6b6a63' : '#fff', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{estrategiaDone ? '↻ Regenerar' : '✦ Generar'}</button>}
-                {estrategia && <button onClick={() => setOpenEstrategia(!openEstrategia)} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openEstrategia ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
+                {estrategia && <button onClick={() => setOpenEstrategia(openEstrategia ? null : 'estrategia')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#9c9a92' }}>{openEstrategia ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}
               </div>
             </div>
             {estrategiaLoading && <div style={{ padding: '0 20px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#185fa5', borderTop: '1px solid #f0efe8' }}><Loader2 size={14} className="animate-spin" /> Generando estrategia...</div>}
