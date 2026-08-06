@@ -239,7 +239,9 @@ Genera la ESTRATEGIA COMPLETA de la campaña:
 ## COMPETENCIA Y DIFERENCIACIÓN
 (Qué están haciendo otros y cómo nos diferenciamos)
 
-Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.`
+Sé específico. No genérico. Esta es la campaña de Terret para ${ctx.nombre}.
+
+IMPORTANTE: NO incluyas plan de contenido, cronograma ni listado de piezas. Solo estrategia narrativa. El plan se genera en el siguiente paso.`
     const text = await streamClaude(prompt, setEstrategia)
     estrategiaRef.current = text
     setEstrategiaLoading(false)
