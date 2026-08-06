@@ -121,7 +121,9 @@ Luego la estrategia:
 ## POSICIONAMIENTO
 ## MENSAJES CLAVE
 ## TONO Y ESTILO VISUAL
-## DECISIÓN ESTRATÉGICA (por qué esta campaña en este momento, qué iteramos de campañas anteriores)`
+## DECISIÓN ESTRATÉGICA (por qué esta campaña en este momento, qué iteramos de campañas anteriores)
+
+IMPORTANTE: NO incluyas plan de contenido, cronograma ni listado de piezas. Solo estrategia narrativa. El plan se genera en el siguiente paso.`
       }]
     })
 
