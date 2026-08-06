@@ -610,21 +610,40 @@ Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin bloques 
           ))}
         </div>
 
-        {/* Estrategia colapsable */}
-        {estrategiaTexto && (
-          <div style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 16 }}>
-            <button onClick={() => setOpenEstrategia(openEstrategia ? null : 'estrategia')}
+        {/* Fases de la campaña - 3 acordeones separados */}
+        {[
+          {
+            key: 'investigacion',
+            icon: '🔍',
+            label: 'Investigación y competencia',
+            content: selectedCampana.investigacion_cmo
+          },
+          {
+            key: 'estrategia',
+            icon: '🎯',
+            label: 'Estrategia y narrativa',
+            content: selectedCampana.estrategia_cmo || estrategiaTexto
+          },
+          {
+            key: 'plan',
+            icon: '📋',
+            label: 'Plan de contenido',
+            content: selectedCampana.plan_cmo
+          },
+        ].filter(s => s.content).map(s => (
+          <div key={s.key} style={{ background: '#fff', border: '1px solid #e0dfd5', borderRadius: 11, overflow: 'hidden', marginBottom: 10 }}>
+            <button onClick={() => setOpenEstrategia(openEstrategia === s.key ? null : s.key)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>🎯 Estrategia y narrativa</span>
-              {openEstrategia ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a18' }}>{s.icon} {s.label}</span>
+              {openEstrategia === s.key ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
             </button>
-            {openEstrategia && (
-              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto' }}>
-                {estrategiaTexto}
+            {openEstrategia === s.key && (
+              <div style={{ padding: '0 20px 20px', borderTop: '1px solid #f0efe8', fontSize: 13, color: '#6b6a63', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 500, overflowY: 'auto' }}>
+                {s.content}
               </div>
             )}
           </div>
-        )}
+        ))}
 
         {/* Piezas por día */}
         {detailLoading ? (
