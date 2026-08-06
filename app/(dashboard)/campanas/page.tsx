@@ -11,6 +11,7 @@ interface CampanaCtx {
 interface Campana {
   id: string; nombre: string; estado: string; fecha_inicio: string
   fecha_fin: string; objetivo: string; created_at: string; output_claude?: string
+  investigacion_cmo?: string; estrategia_cmo?: string; plan_cmo?: string
 }
 interface Pieza {
   id: string; fecha: string; canal: string; tipo_contenido: string; titulo: string
@@ -71,7 +72,7 @@ export default function CampanasPage() {
   const [estrategia, setEstrategia] = useState('')
   const [estrategiaLoading, setEstrategiaLoading] = useState(false)
   const [estrategiaDone, setEstrategiaDone] = useState(false)
-  const [openEstrategia, setOpenEstrategia] = useState(false)
+  const [openEstrategia, setOpenEstrategia] = useState<string | null>(null)
   const [planRaw, setPlanRaw] = useState('')
   const [planLoading, setPlanLoading] = useState(false)
   const [planDone, setPlanDone] = useState(false)

@@ -186,6 +186,9 @@ Responde ÚNICAMENTE con las líneas del plan.`
       audiencia: campanaMeta.audiencia,
       notas: manual ? 'Generada manualmente por investigación CMO' : 'Generada automáticamente por CMO (cron semanal)',
       output_claude: `## Investigación y análisis de competencia\n${investigacion}\n\n## Estrategia y narrativa\n${estrategiaTexto}\n\n## Plan de contenido\n${planTexto}`,
+      investigacion_cmo: investigacion,
+      estrategia_cmo: estrategiaTexto,
+      plan_cmo: planTexto,
       estado: 'activa',
     }).select().single()
 
