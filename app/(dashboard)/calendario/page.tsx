@@ -64,7 +64,7 @@ interface Evento {
 }
 
 interface FechaNueva {
-  fecha: string; nombre: string; tipo: 'carrera' | 'comercial'; ciudad?: string; distancia?: string
+  fecha: string; nombre: string; tipo: 'carrera' | 'comercial'; ciudad?: string; distancia?: string; fuente?: string
 }
 
 type FiltroCalendario = 'todo' | 'tareas' | 'fechas'
@@ -185,12 +185,17 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
     setBuscandoFechas(true); setFechasNuevas([])
     const today = format(new Date(), 'yyyy-MM-dd')
     const existentes = [...RACES_CO, ...COMMERCIAL_DATES].map(e => `${e.date}: ${e.name}`).join('\n').substring(0, 400)
-    const prompt = `Busca en web carreras de running y fechas comerciales para Colombia en los próximos 6 meses desde ${today}. Busca: "calendario running Colombia 2026", "maratones Colombia 2026 nuevos". Responde ÚNICAMENTE con JSON array:\n[{"fecha":"YYYY-MM-DD","nombre":"Nombre","tipo":"carrera","ciudad":"Ciudad","distancia":"42K"}]\nNo incluyas estas que ya tenemos:\n${existentes}`
+    const prompt = `Busca en web carreras de running y fechas comerciales para Colombia en los próximos 6 meses desde ${today}. Busca: "calendario running Colombia 2026", "maratones Colombia 2026 atletismo", "carreras populares Colombia 2026". Responde ÚNICAMENTE con JSON array, sin texto adicional:\n[{"fecha":"YYYY-MM-DD","nombre":"Nombre completo del evento","tipo":"carrera","ciudad":"Ciudad","distancia":"distancias disponibles","fuente":"URL o nombre del sitio web donde encontraste esto"}]\nSolo incluye eventos con fecha confirmada y fuente verificable. No incluyas estas que ya tenemos:\n${existentes}`
     const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] }) })
     const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
     while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value) }
     try { const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()); if (Array.isArray(parsed)) { setFechasNuevas(parsed); setShowFechasModal(true) } } catch { /* ignore */ }
     setBuscandoFechas(false)
+  }
+
+  async function eliminarFechaExtra(id: string) {
+    await fetch(`/api/fechas-calendario?id=${id}`, { method: 'DELETE' })
+    setFechasExtras(prev => prev.filter((f: FechaNueva & { id?: string }) => f.id !== id))
   }
 
   async function agregarFecha(f: FechaNueva) {
@@ -493,6 +498,7 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: DS.text }}>{f.nombre}</div>
                   <div style={{ fontSize: 11, color: DS.textSecondary, marginTop: 2 }}>{f.fecha}{f.ciudad && ` · ${f.ciudad}`}{f.distancia && ` · ${f.distancia}`}</div>
+                {f.fuente && <div style={{ fontSize: 10, color: DS.info, marginTop: 2 }}>🔗 {f.fuente}</div>}
                 </div>
                 <button onClick={() => agregarFecha(f)} style={{ padding: '6px 12px', background: DS.success, color: '#fff', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>+ Agregar</button>
               </div>

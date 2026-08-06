@@ -34,3 +34,11 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
+
+export async function DELETE(req: Request) {
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) return Response.json({ error: 'ID requerido' }, { status: 400 })
+  const { error } = await getClient().from('fechas_calendario').delete().eq('id', id)
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ok: true })
+}
