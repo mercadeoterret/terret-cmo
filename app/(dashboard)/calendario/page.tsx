@@ -102,7 +102,7 @@ export default function CalendarioPage() {
   useEffect(() => {
     fetch('/api/fechas-calendario')
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setFechasExtras(d.map((f: Record<string,string>) => ({ fecha: f.fecha, nombre: f.nombre, tipo: f.tipo as 'carrera' | 'comercial', ciudad: f.ciudad, distancia: f.distancia }))) })
+      .then(d => { if (Array.isArray(d)) setFechasExtras(d.map((f: Record<string,string>) => ({ id: f.id, fecha: f.fecha, nombre: f.nombre, tipo: f.tipo as 'carrera' | 'comercial', ciudad: f.ciudad, distancia: f.distancia, fuente: f.fuente }))) })
       .catch(() => {})
   }, [])
 
@@ -382,6 +382,7 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: DS.text }}>{ev.titulo}</div>
                         <div style={{ fontSize: 10, color: ev.color, fontWeight: 600, marginTop: 1 }}>{ev.tipo}</div>
+                      {(ev as FechaNueva & { fuente?: string }).fuente && <div style={{ fontSize: 9, color: DS.info, marginTop: 2 }}>🔗 {(ev as FechaNueva & { fuente?: string }).fuente}</div>}
                       </div>
                     </div>
                   ))}

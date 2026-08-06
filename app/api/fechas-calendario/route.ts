@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       tipo: body.tipo,
       ciudad: body.ciudad || null,
       distancia: body.distancia || null,
-      fuente: 'cmo',
+      fuente: body.fuente || 'cmo',
     })
     .select()
     .single()
