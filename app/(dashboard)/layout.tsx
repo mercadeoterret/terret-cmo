@@ -146,7 +146,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <button onClick={handleLogout} style={{
               fontSize: 11, color: DS.textSecondary, background: 'none', border: 'none',
               cursor: 'pointer', fontFamily: 'inherit', padding: '2px 6px',
-              borderRadius: 4, hover: { background: DS.bg }
+              borderRadius: 4
             }}>
               Salir →
             </button>
