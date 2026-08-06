@@ -383,6 +383,12 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
                         <div style={{ fontSize: 12, fontWeight: 700, color: DS.text }}>{ev.titulo}</div>
                         <div style={{ fontSize: 10, color: ev.color, fontWeight: 600, marginTop: 1 }}>{ev.tipo}</div>
                       {(ev as unknown as { fuente?: string }).fuente && <div style={{ fontSize: 9, color: DS.info, marginTop: 2 }}>🔗 {(ev as unknown as { fuente?: string }).fuente}</div>}
+                      {(ev as unknown as { id?: string }).id && (
+                        <button onClick={() => eliminarFechaExtra((ev as unknown as { id: string }).id)}
+                          style={{ marginTop: 6, padding: '4px 10px', background: DS.dangerLight, color: DS.danger, border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Eliminar
+                        </button>
+                      )}
                       </div>
                     </div>
                   ))}
