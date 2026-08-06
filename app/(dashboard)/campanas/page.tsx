@@ -93,8 +93,6 @@ export default function CampanasPage() {
   async function investigarYGenerar() {
     setInvestigando(true)
     setShowModoModal(false)
-    setView('builder')
-    setStep(1)
     setInvestigacionLog('Investigando tendencias y oportunidades...')
     try {
       const res = await fetch('/api/investigar', {
@@ -109,7 +107,6 @@ export default function CampanasPage() {
         setTimeout(() => {
           setInvestigando(false)
           setInvestigacionLog('')
-          setView('list')
         }, 2000)
       } else {
         setInvestigacionLog(`Error: ${data.error}`)
