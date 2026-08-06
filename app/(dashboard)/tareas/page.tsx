@@ -43,8 +43,7 @@ const CONTENT_METRICS: Record<string, { label: string; hint: string; unit?: stri
     { label: 'Comentarios', hint: 'Total comentarios' },
     { label: 'Compartidos', hint: 'Veces compartido' },
     { label: 'Guardados', hint: 'Veces guardado' },
-    { label: 'Alcance', hint: 'Personas únicas' },
-    { label: 'Engagement (%)', hint: '(likes+comments+shares+saves)/reach×100', unit: '%', benchmarkGreen: 5, benchmarkYellow: 2 },
+    { label: 'Alcance', hint: 'Personas únicas que lo vieron' },
   ],
   'Carrusel': [
     { label: 'Alcance', hint: 'Personas únicas que lo vieron' },
@@ -52,14 +51,14 @@ const CONTENT_METRICS: Record<string, { label: string; hint: string; unit?: stri
     { label: 'Guardados', hint: 'Métrica más importante en carruseles' },
     { label: 'Compartidos', hint: 'Veces compartido' },
     { label: 'Comentarios', hint: 'Total comentarios' },
-    { label: 'Tasa deslizamiento (%)', hint: '% que pasó a la 2da slide', unit: '%', benchmarkGreen: 40, benchmarkYellow: 20 },
+
   ],
   'Story': [
     { label: 'Vistas', hint: 'Total visualizaciones' },
     { label: 'Respuestas', hint: 'DMs recibidos por la story' },
     { label: 'Clics en enlace', hint: 'Si tenía link o sticker' },
     { label: 'Salidas', hint: 'Personas que salieron al ver la story' },
-    { label: 'Tasa de retención (%)', hint: '(1 - salidas/vistas)×100', unit: '%', benchmarkGreen: 70, benchmarkYellow: 50 },
+
   ],
   'Video UGC': [
     { label: 'Reproducciones', hint: 'Total vistas' },
@@ -96,6 +95,60 @@ function getMetricasParaTipo(tipoContenido: string): typeof CONTENT_METRICS[stri
     k.toLowerCase().includes(tipoContenido?.toLowerCase())
   )
   return key ? CONTENT_METRICS[key] : CONTENT_METRICS['Reel']
+}
+
+function calcularMetricasAuto(form: Record<string, string>): Record<string, { valor: number; label: string; benchmarkGreen?: number; benchmarkYellow?: number }> {
+  const n = (k: string) => parseFloat(form[k] || '0') || 0
+  const auto: Record<string, { valor: number; label: string; benchmarkGreen?: number; benchmarkYellow?: number }> = {}
+
+  // Engagement rate (Reel / Carrusel / Story)
+  const likes = n('Me gustas')
+  const comments = n('Comentarios')
+  const shares = n('Compartidos')
+  const saves = n('Guardados')
+  const reach = n('Alcance')
+  if (reach > 0 && (likes + comments + shares + saves) > 0) {
+    auto['Engagement (%)'] = {
+      valor: ((likes + comments + shares + saves) / reach) * 100,
+      label: 'Engagement rate',
+      benchmarkGreen: 5, benchmarkYellow: 2
+    }
+  }
+
+  // Tasa de retención Story
+  const vistas = n('Vistas')
+  const salidas = n('Salidas')
+  if (vistas > 0 && salidas > 0) {
+    auto['Retención (%)'] = {
+      valor: ((vistas - salidas) / vistas) * 100,
+      label: 'Tasa de retención',
+      benchmarkGreen: 70, benchmarkYellow: 50
+    }
+  }
+
+  // ROAS Pauta Meta
+  const inversion = n('Inversión (COP)')
+  const revenue = n('Revenue (COP)')
+  if (inversion > 0 && revenue > 0) {
+    auto['ROAS calculado'] = {
+      valor: revenue / inversion,
+      label: 'ROAS',
+      benchmarkGreen: 7, benchmarkYellow: 5
+    }
+  }
+
+  // Tasa de apertura Email (si no se ingresó)
+  const enviados = n('Enviados')
+  const aperturas = n('Aperturas')
+  if (enviados > 0 && aperturas > 0 && !form['Tasa apertura (%)']) {
+    auto['Tasa apertura calculada (%)'] = {
+      valor: (aperturas / enviados) * 100,
+      label: 'Tasa de apertura',
+      benchmarkGreen: 25, benchmarkYellow: 15
+    }
+  }
+
+  return auto
 }
 
 function Semaforo({ value, benchmarkGreen, benchmarkYellow }: { value: number; benchmarkGreen?: number; benchmarkYellow?: number }) {
@@ -162,6 +215,9 @@ export default function TareasPage() {
     setSavingMetricas(true)
     const metricas: Record<string, number> = {}
     Object.entries(metricasForm).forEach(([k, v]) => { if (v) metricas[k] = parseFloat(v) })
+    // Agregar métricas calculadas automáticamente
+    const auto = calcularMetricasAuto(metricasForm)
+    Object.entries(auto).forEach(([k, m]) => { metricas[k] = parseFloat(m.valor.toFixed(2)) })
     await fetch('/api/tareas', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: selectedTarea.id, metricas })
@@ -526,6 +582,29 @@ Sé directo y accionable. No des contexto genérico.`
                       )
                     })}
                   </div>
+                  {/* Métricas calculadas automáticamente */}
+                  {(() => {
+                    const auto = calcularMetricasAuto(metricasForm)
+                    const keys = Object.keys(auto)
+                    if (keys.length === 0) return null
+                    return (
+                      <div style={{ background: DS.infoLight, borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: DS.info, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>⚡ Calculado automáticamente</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                          {keys.map(k => {
+                            const m = auto[k]
+                            return (
+                              <div key={k} style={{ background: DS.surface, borderRadius: 8, padding: '10px 12px' }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: DS.textTertiary, marginBottom: 4 }}>{m.label}</div>
+                                <div style={{ fontSize: 20, fontWeight: 800, color: DS.text }}>{m.valor.toFixed(2)}{k.includes('%') || k.includes('rate') ? '%' : k.includes('ROAS') ? 'x' : ''}</div>
+                                {m.benchmarkGreen && <Semaforo value={m.valor} benchmarkGreen={m.benchmarkGreen} benchmarkYellow={m.benchmarkYellow} />}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={guardarMetricas} disabled={savingMetricas}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', background: DS.text, color: '#fff', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
