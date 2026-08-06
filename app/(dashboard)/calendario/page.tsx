@@ -81,6 +81,10 @@ export default function CalendarioPage() {
   const [buscandoFechas, setBuscandoFechas] = useState(false)
   const [fechasNuevas, setFechasNuevas] = useState<FechaNueva[]>([])
   const [showFechasModal, setShowFechasModal] = useState(false)
+  const [buscarError, setBuscarError] = useState('')
+  const [showBuscarConfig, setShowBuscarConfig] = useState(false)
+  const [buscarDesde, setBuscarDesde] = useState('')
+  const [buscarHasta, setBuscarHasta] = useState('')
   const [fechasExtras, setFechasExtras] = useState<FechaNueva[]>([])
   const [filtro, setFiltro] = useState<FiltroCalendario>('todo')
 
@@ -182,14 +186,31 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
   }
 
   async function buscarFechasNuevas() {
-    setBuscandoFechas(true); setFechasNuevas([])
+    setBuscandoFechas(true); setFechasNuevas([]); setBuscarError(''); setShowBuscarConfig(false)
     const today = format(new Date(), 'yyyy-MM-dd')
+    const desde = buscarDesde || today
+    const hasta = buscarHasta || format(new Date(new Date().getTime() + 180 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
     const existentes = [...RACES_CO, ...COMMERCIAL_DATES].map(e => `${e.date}: ${e.name}`).join('\n').substring(0, 400)
-    const prompt = `Busca en web carreras de running y fechas comerciales para Colombia en los próximos 6 meses desde ${today}. Busca: "calendario running Colombia 2026", "maratones Colombia 2026 atletismo", "carreras populares Colombia 2026". Responde ÚNICAMENTE con JSON array, sin texto adicional:\n[{"fecha":"YYYY-MM-DD","nombre":"Nombre completo del evento","tipo":"carrera","ciudad":"Ciudad","distancia":"distancias disponibles","fuente":"URL o nombre del sitio web donde encontraste esto"}]\nSolo incluye eventos con fecha confirmada y fuente verificable. No incluyas estas que ya tenemos:\n${existentes}`
+    const existentesDB = fechasExtras.map((f: FechaNueva) => `${f.fecha}: ${f.nombre}`).join('\n')
+    const prompt = `Busca en web carreras de running y fechas comerciales para Colombia entre ${desde} y ${hasta}. Busca específicamente: "calendario running Colombia 2026", "maratones Colombia atletismo", "carreras populares Colombia". Responde ÚNICAMENTE con un JSON array válido, sin texto antes ni después, sin markdown:\n[{"fecha":"YYYY-MM-DD","nombre":"Nombre completo","tipo":"carrera","ciudad":"Ciudad","distancia":"distancias","fuente":"URL exacta o sitio web"}]\nSolo incluye eventos con fecha confirmada. No incluyas estas:\n${existentes}\n${existentesDB}`
     const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'campana', messages: [{ role: 'user', content: prompt }] }) })
     const reader = res.body!.getReader(); const dec = new TextDecoder(); let text = ''
     while (true) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value) }
-    try { const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()); if (Array.isArray(parsed)) { setFechasNuevas(parsed); setShowFechasModal(true) } } catch { /* ignore */ }
+    try {
+      const clean = text.replace(/```json|```/g, '').trim()
+      // Intentar extraer JSON si hay texto extra
+      const jsonMatch = clean.match(/\[.*\]/s)
+      const jsonStr = jsonMatch ? jsonMatch[0] : clean
+      const parsed = JSON.parse(jsonStr)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setFechasNuevas(parsed)
+        setShowFechasModal(true)
+      } else {
+        setBuscarError('No se encontraron fechas nuevas. Intenta con otro rango de fechas.')
+      }
+    } catch {
+      setBuscarError('Error al procesar la respuesta. Intenta de nuevo.')
+    }
     setBuscandoFechas(false)
   }
 
@@ -231,7 +252,7 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
       {/* Calendario */}
       <div style={{ background: DS.surface, border: `1px solid ${DS.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         {/* Nav */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${DS.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${DS.border}`, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={() => setCur(subMonths(cur, 1))} style={{ padding: '6px 10px', border: `1px solid ${DS.border}`, borderRadius: 8, background: DS.surface, cursor: 'pointer' }}><ChevronLeft size={14} color={DS.textSecondary} /></button>
             <span style={{ fontSize: 15, fontWeight: 700, color: DS.text, minWidth: 180, textAlign: 'center' }}>
