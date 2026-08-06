@@ -1,6 +1,5 @@
 'use client'
 import React from 'react'
-'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO, addMonths, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
