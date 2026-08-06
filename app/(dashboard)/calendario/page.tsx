@@ -241,7 +241,7 @@ Responde ÚNICAMENTE con JSON válido sin texto adicional ni markdown:
           <p style={{ fontSize: 13, color: DS.textSecondary, margin: '4px 0 0' }}>Tareas, carreras y fechas comerciales.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={buscarFechasNuevas} disabled={buscandoFechas}
+          <button onClick={() => setShowBuscarConfig(!showBuscarConfig)} disabled={buscandoFechas}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: DS.surface, color: DS.text, border: `1px solid ${DS.border}`, borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {buscandoFechas ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
             {buscandoFechas ? 'Buscando...' : 'Buscar fechas'}
