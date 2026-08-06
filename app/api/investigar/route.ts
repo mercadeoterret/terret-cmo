@@ -14,6 +14,17 @@ const CANAL_COLORS: Record<string, string> = {
   'WhatsApp / estados': '#25d366', 'Influencers / UGC': '#f59e0b',
 }
 
+async function setProgreso(sb: ReturnType<typeof createServiceClient>, fase: string, progreso: number, campana_nombre = '') {
+  await sb.from('cron_status').upsert({
+    id: 'singleton',
+    estado: 'running',
+    fase,
+    progreso,
+    campana_nombre,
+    updated_at: new Date().toISOString()
+  })
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -23,13 +34,11 @@ export async function POST(req: NextRequest) {
     const contextoAdicional = body.contexto || ''
 
     const sb = createServiceClient()
-
-    // Marcar cron como running
-    await sb.from('cron_status').upsert({ id: 'singleton', estado: 'running', iniciado_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-
     const { data: brandData } = await sb.from('brand_knowledge').select('contenido').eq('activo', true)
     const { data: kpisData } = await sb.from('kpis').select('*').order('semana', { ascending: false }).limit(1).single()
     const { data: campanasRecientes } = await sb.from('campanas').select('nombre, fecha_inicio, fecha_fin, objetivo').order('created_at', { ascending: false }).limit(5)
+    const { data: memoriaData } = await sb.from('memoria_campanas').select('campana_nombre, tipo_campana, narrativa_central, formatos_usados, decision_estrategica').order('created_at', { ascending: false }).limit(6)
+
     const brandKnowledge = (brandData || []).map((b: { contenido: string }) => b.contenido)
     const kpis = kpisData || {}
     const system = buildSystemPrompt(kpis as Record<string, number>, brandKnowledge)
@@ -42,30 +51,36 @@ export async function POST(req: NextRequest) {
     const proximasCarreras = RACES_CO.filter(r => r.date >= todayStr && r.date <= in60Str)
     const proximasFechas = COMMERCIAL_DATES.filter(f => f.date >= todayStr && f.date <= in60Str)
     const campanasNombres = (campanasRecientes || []).map((c: Record<string, string>) => c.nombre).join(', ')
+    const memoriaTexto = memoriaData && memoriaData.length > 0
+      ? memoriaData.map((m: Record<string, string>) => `- "${m.campana_nombre}": Narrativa: ${m.narrativa_central}. Formatos: ${m.formatos_usados}.`).join('\n')
+      : ''
 
-    // ── FASE 1: Investigar oportunidades + competencia ─────────────────────
+    // ── FASE 1: Investigación + competencia (25%) ──────────────────────────
+    await setProgreso(sb, 'Investigando tendencias y competencia...', 10)
+
     const investigacionRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 3000,
       tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
-      system: 'Eres el Director de Marketing de Terret, marca colombiana de accesorios para running. Investiga con datos concretos. Nunca pidas información adicional.',
+      system: 'Eres el Director de Marketing de Terret, marca colombiana de accesorios para running. Investigas con datos reales y concretos. Nunca inventes información.',
       messages: [{
         role: 'user',
         content: `Investiga para Terret (accesorios running Colombia). Hoy: ${todayStr}.
 
 CONTEXTO:
-- Carreras próximas: ${proximasCarreras.length ? proximasCarreras.map(r => `${r.date}: ${r.name} (${r.city})`).join(', ') : 'Ninguna'}
+- Carreras próximas (60 días): ${proximasCarreras.length ? proximasCarreras.map(r => `${r.date}: ${r.name} (${r.city})`).join(', ') : 'Ninguna registrada'}
 - Fechas comerciales: ${proximasFechas.length ? proximasFechas.map(f => `${f.date}: ${f.name}`).join(', ') : 'Ninguna'}
-- Campañas recientes de Terret (contexto): ${campanasNombres || 'Ninguna'}
+- Campañas recientes Terret: ${campanasNombres || 'Ninguna'}
+${contextoAdicional ? `- Contexto adicional: ${contextoAdicional}` : ''}
 
-INVESTIGA EN WEB:
-1. OPORTUNIDADES: Carreras running Colombia próximas, tendencias running colombiano, hashtags virales, conversaciones actuales
-2. COMPETENCIA: Qué están publicando en redes sociales estas semanas Nike Colombia, Adidas Colombia, CEP Colombia, On Running Colombia, marcas running colombianas. Busca sus últimas publicaciones, formatos más usados, narrativas recientes
-3. DIFERENCIACIÓN: Con base en lo que hace la competencia, qué oportunidades de contenido hay donde Terret pueda diferenciarse
+INVESTIGA:
+1. Oportunidades: carreras Colombia próximas, tendencias running colombiano, hashtags virales
+2. Competencia: qué están publicando Nike Colombia, Adidas Colombia, CEP Colombia esta semana
+3. Diferenciación: dónde puede Terret diferenciarse de la competencia
 
-Busca: "running Colombia 2026 tendencias", "Nike Colombia instagram running", "Adidas Colombia running", "medias compresion running Colombia", "carreras atletismo Colombia 2026"
+Busca: "running Colombia 2026 tendencias", "Nike Colombia instagram running", "carreras atletismo Colombia 2026"
 
-Entrega un análisis estructurado de oportunidades Y de la competencia.`
+Entrega análisis estructurado de máximo 800 palabras.`
       }]
     })
 
@@ -73,69 +88,48 @@ Entrega un análisis estructurado de oportunidades Y de la competencia.`
     for (const block of investigacionRes.content) {
       if (block.type === 'text') investigacion += block.text
     }
+    // Limitar tamaño
+    investigacion = investigacion.substring(0, 3000)
 
-    // ── FASE 2: Cargar memoria de campañas relevantes ──────────────────────
-    // Determinar tipo de campaña para cargar memoria relevante
-    const tipoDetectado = proximasCarreras.length > 0 ? 'evento' : 'comunidad'
-    const { data: memoriaData } = await sb
-      .from('memoria_campanas')
-      .select('campana_nombre, tipo_campana, narrativa_central, formatos_usados, decision_estrategica, metricas_destacadas')
-      .or(`tipo_campana.eq.${tipoDetectado},tipo_campana.eq.general`)
-      .order('created_at', { ascending: false })
-      .limit(6)
+    await setProgreso(sb, 'Generando estrategia de campaña...', 35)
 
-    const memoriaTexto = memoriaData && memoriaData.length > 0
-      ? `\nMEMORIA DE CAMPAÑAS ANTERIORES DE TERRET (úsala para tomar decisiones estratégicas nuevas, no repetir lo mismo):\n${memoriaData.map((m: Record<string, string>) =>
-        `- "${m.campana_nombre}" (${m.tipo_campana}): Narrativa usada: ${m.narrativa_central}. Formatos: ${m.formatos_usados}. Decisión estratégica: ${m.decision_estrategica}${m.metricas_destacadas ? `. Métricas: ${m.metricas_destacadas}` : ''}`
-      ).join('\n')}`
-      : ''
-
-    // ── FASE 3: Generar estrategia con contexto completo ───────────────────
-    const systemAutonomo = system + `
-
-ANÁLISIS DE COMPETENCIA Y MEMORIA DISPONIBLE: Usa esta información para tomar decisiones estratégicas que diferencien a Terret. Si la competencia está usando un formato, evalúa si Terret debe diferenciarse o competir directamente. Si ya usaste una narrativa antes, itera sobre ella desde un ángulo diferente — un mismo concepto como "entrenamiento 5am" puede explorarse desde la preparación, la comunidad, la recuperación, el producto técnico, el resultado. Piensa como director que construye un universo narrativo coherente pero siempre evolutivo.`
+    // ── FASE 2: Estrategia (independiente, recibe resumen de fase 1) ────────
+    const systemConMemoria = system + (memoriaTexto ? `\n\nCAMPAÑAS ANTERIORES DE TERRET (itera estratégicamente, no repitas):\n${memoriaTexto}` : '')
 
     const estrategiaRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3000,
-      system: systemAutonomo,
+      system: systemConMemoria,
       messages: [{
         role: 'user',
-        content: `INVESTIGACIÓN Y ANÁLISIS DE COMPETENCIA:
-${investigacion}
-${memoriaTexto}
+        content: `RESUMEN DE INVESTIGACIÓN:
+${investigacion.substring(0, 1500)}
 
-Con este contexto completo, genera la CAMPAÑA para Terret.
-${contextoAdicional ? `\nCONTEXTO ADICIONAL DEL EQUIPO:\n${contextoAdicional}\n` : ''} Considera:
-- Qué está haciendo la competencia y cómo diferenciarnos
-- Qué narrativas ya hemos usado y cómo iterarlas estratégicamente
-- La distribución correcta de contenido según el tipo de campaña
+${contextoAdicional ? `CONTEXTO DEL EQUIPO: ${contextoAdicional}\n` : ''}
+Genera la ESTRATEGIA de campaña para Terret. Solo estrategia — NO incluyas plan de contenido ni listado de fechas.
 
 Primero el JSON en una línea:
-CAMPAÑA_JSON: {"nombre":"...","descripcion":"...","fecha_inicio":"YYYY-MM-DD","fecha_fin":"YYYY-MM-DD","objetivo":"...","evento_relacionado":"...","canales":["..."],"audiencia":["..."],"tipo_campana":"evento|venta|comunidad|general"}
+CAMPAÑA_JSON: {"nombre":"...","descripcion":"...","fecha_inicio":"${fechaInicioOverride || todayStr}","fecha_fin":"${fechaFinOverride || new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}","objetivo":"...","evento_relacionado":"...","canales":["..."],"audiencia":["..."],"tipo_campana":"evento|venta|comunidad|general"}
 
-Luego la estrategia:
+Luego la estrategia (máximo 600 palabras):
 ## CONCEPTO CREATIVO
 ## NARRATIVA DE LA CAMPAÑA
-## DIFERENCIACIÓN DE COMPETENCIA (qué hace la competencia y cómo nos diferenciamos)
 ## POSICIONAMIENTO
 ## MENSAJES CLAVE
 ## TONO Y ESTILO VISUAL
-## DECISIÓN ESTRATÉGICA (por qué esta campaña en este momento, qué iteramos de campañas anteriores)
-
-IMPORTANTE: NO incluyas plan de contenido, cronograma ni listado de piezas. Solo estrategia narrativa. El plan se genera en el siguiente paso.`
+## DECISIÓN ESTRATÉGICA`
       }]
     })
 
-    const estrategiaTexto = estrategiaRes.content[0].type === 'text' ? estrategiaRes.content[0].text : ''
+    let estrategiaTexto = estrategiaRes.content[0].type === 'text' ? estrategiaRes.content[0].text : ''
 
-    // Extraer JSON de la campaña
+    // Extraer JSON
     const jsonMatch = estrategiaTexto.match(/CAMPAÑA_JSON:\s*(\{[^}]+\})/)
     let campanaMeta = {
       nombre: `Campaña Terret — ${today.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}`,
       descripcion: 'Generada automáticamente por el CMO',
-      fecha_inicio: todayStr,
-      fecha_fin: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      fecha_inicio: fechaInicioOverride || todayStr,
+      fecha_fin: fechaFinOverride || new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       objetivo: 'Ventas directas — maximizar ROAS',
       evento_relacionado: '',
       canales: ['Meta Ads', 'Instagram orgánico', 'Email marketing'],
@@ -143,38 +137,50 @@ IMPORTANTE: NO incluyas plan de contenido, cronograma ni listado de piezas. Solo
       tipo_campana: 'general',
     }
     if (jsonMatch) {
-      try { campanaMeta = { ...campanaMeta, ...JSON.parse(jsonMatch[1]) } } catch { /* usar defaults */ }
+      try { campanaMeta = { ...campanaMeta, ...JSON.parse(jsonMatch[1]) } } catch { /* defaults */ }
     }
 
-    // ── FASE 4: Plan de contenido ──────────────────────────────────────────
+    await setProgreso(sb, 'Creando plan de contenido...', 60, campanaMeta.nombre)
+
+    // ── FASE 3: Plan de contenido (independiente, recibe resumen de estrategia) ──
+    // Solo el resumen de mensajes clave para el plan
+    const mensajesMatch = estrategiaTexto.match(/## MENSAJES CLAVE([\s\S]*?)(?=##|$)/i)
+    const conceptoMatch = estrategiaTexto.match(/## CONCEPTO CREATIVO([\s\S]*?)(?=##|$)/i)
+    const estrategiaResumen = [
+      conceptoMatch ? conceptoMatch[0].substring(0, 300) : '',
+      mensajesMatch ? mensajesMatch[0].substring(0, 200) : ''
+    ].filter(Boolean).join('\n')
+
     const planRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
-      system: systemAutonomo,
+      max_tokens: 4000,
+      system: 'Eres el Director de Marketing de Terret. Generas planes de contenido con frecuencia estratégica. Respondes ÚNICAMENTE con líneas de plan en formato exacto. Sin texto adicional.',
       messages: [{
         role: 'user',
         content: `CAMPAÑA: ${campanaMeta.nombre}
-PERÍODO: ${fechaInicioOverride || campanaMeta.fecha_inicio} al ${fechaFinOverride || campanaMeta.fecha_fin}
+PERÍODO: ${campanaMeta.fecha_inicio} al ${campanaMeta.fecha_fin}
 CANALES: ${campanaMeta.canales.join(', ')}
 OBJETIVO: ${campanaMeta.objetivo}
+CONCEPTO: ${estrategiaResumen}
 
-ESTRATEGIA:
-${estrategiaTexto}
+REGLAS DE FRECUENCIA (obligatorias):
+- Instagram orgánico: máximo 4 piezas/semana
+- TikTok orgánico: máximo 3 piezas/semana
+- Email: máximo 2/semana
+- WhatsApp: máximo 2/semana
+- NO publiques todos los días si no hay razón estratégica
+- Títulos: máximo 6 palabras
 
-Genera el plan de contenido aplicando la distribución estratégica correcta para este tipo de campaña.
-Asegúrate de mezclar: contenido educativo, de comunidad/entretenimiento Y de conversión según las proporciones del tipo de campaña.
-No pongas solo contenido de venta.
+FORMATO EXACTO — solo líneas así, nada más:
+YYYY-MM-DD | Canal | Tipo | "Título corto"
 
-FORMATO: una línea por pieza:
-YYYY-MM-DD | Canal | Tipo | "Título específico y descriptivo"
-
-Tipos: Reel, Carrusel, Story, Post, Video UGC, Email, Estado WhatsApp, Pauta Meta, Pauta TikTok
-Reglas: múltiples piezas por día, no saltar días, títulos muy específicos que reflejen la decisión estratégica.
-Responde ÚNICAMENTE con las líneas del plan.`
+Tipos permitidos: Reel, Carrusel, Story, Post, Video UGC, Email, Estado WhatsApp, Pauta Meta, Pauta TikTok`
       }]
     })
 
     const planTexto = planRes.content[0].type === 'text' ? planRes.content[0].text : ''
+
+    await setProgreso(sb, 'Guardando campaña...', 80, campanaMeta.nombre)
 
     // ── Guardar campaña ────────────────────────────────────────────────────
     const { data: campana, error: campanaError } = await sb.from('campanas').insert({
@@ -187,7 +193,7 @@ Responde ÚNICAMENTE con las líneas del plan.`
       canales: campanaMeta.canales,
       audiencia: campanaMeta.audiencia,
       notas: manual ? 'Generada manualmente por investigación CMO' : 'Generada automáticamente por CMO (cron semanal)',
-      output_claude: `## Investigación y análisis de competencia\n${investigacion}\n\n## Estrategia y narrativa\n${estrategiaTexto}\n\n## Plan de contenido\n${planTexto}`,
+      output_claude: `## Investigación\n${investigacion}\n\n## Estrategia\n${estrategiaTexto}\n\n## Plan\n${planTexto}`,
       investigacion_cmo: investigacion,
       estrategia_cmo: estrategiaTexto,
       plan_cmo: planTexto,
@@ -221,12 +227,9 @@ Responde ÚNICAMENTE con las líneas del plan.`
       await sb.from('calendario_eventos').insert(payload)
     }
 
-    // ── FASE 5: Guardar memoria comprimida de esta campaña ─────────────────
-    // Extraer decisión estratégica del texto generado
-    const decisionMatch = estrategiaTexto.match(/DECISIÓN ESTRATÉGICA[\s\S]*?(?=##|$)/i)
-    const narrativaMatch = estrategiaTexto.match(/NARRATIVA DE LA CAMPAÑA[\s\S]*?(?=##|$)/i)
-    const diferencMatch = estrategiaTexto.match(/DIFERENCIACIÓN DE COMPETENCIA[\s\S]*?(?=##|$)/i)
-
+    // ── Guardar memoria ────────────────────────────────────────────────────
+    const decisionMatch = estrategiaTexto.match(/## DECISIÓN ESTRATÉGICA([\s\S]*?)(?=##|$)/i)
+    const narrativaMatch = estrategiaTexto.match(/## NARRATIVA DE LA CAMPAÑA([\s\S]*?)(?=##|$)/i)
     const formatosUsados = [...new Set(payload.map((p: Record<string, unknown>) => p.tipo_contenido as string))].join(', ')
 
     await sb.from('memoria_campanas').insert({
@@ -240,28 +243,25 @@ Responde ÚNICAMENTE con las líneas del plan.`
       tags: campanaMeta.canales,
     })
 
-    // Marcar cron como done
-    await sb.from('cron_status').upsert({ id: 'singleton', estado: 'done', campana_nombre: campana.nombre, updated_at: new Date().toISOString() })
+    await setProgreso(sb, 'Campaña lista', 100, campana.nombre)
 
-    // Reset a idle después de 30 segundos
+    // Reset a idle después de 5 segundos
     setTimeout(async () => {
-      await sb.from('cron_status').upsert({ id: 'singleton', estado: 'idle', updated_at: new Date().toISOString() })
-    }, 30000)
+      await sb.from('cron_status').upsert({ id: 'singleton', estado: 'done', fase: '', progreso: 0, campana_nombre: campana.nombre, updated_at: new Date().toISOString() })
+    }, 5000)
 
     return NextResponse.json({
       ok: true,
       campana_id: campana.id,
       campana_nombre: campana.nombre,
       piezas: payload.length,
-      investigacion: investigacion.substring(0, 500),
     })
 
   } catch (e) {
     console.error('Error investigar:', e)
-    // Marcar error en cron_status
     try {
       const sb2 = createServiceClient()
-      await sb2.from('cron_status').upsert({ id: 'singleton', estado: 'idle', updated_at: new Date().toISOString() })
+      await sb2.from('cron_status').upsert({ id: 'singleton', estado: 'idle', fase: '', progreso: 0, updated_at: new Date().toISOString() })
     } catch { /* ignore */ }
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }

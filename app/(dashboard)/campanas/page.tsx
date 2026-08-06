@@ -116,17 +116,18 @@ export default function CampanasPage() {
     setProximoCron(calcProximoCron())
     const cronInterval = setInterval(() => setProximoCron(calcProximoCron()), 30000)
 
-    // Polling cron status cada 15s
+    // Polling cron status cada 5s
     async function checkCronStatus() {
       try {
         const r = await fetch('/api/cron-status')
         const d = await r.json()
         if (d.estado) setCronStatus(d.estado)
-        if (d.estado === 'running') fetchCampanas()
+        if (d.fase !== undefined) setInvestigacionLog(d.fase)
+        if (d.estado === 'done') { fetchCampanas(); setTimeout(() => setCronStatus('idle'), 3000) }
       } catch { /* ignore */ }
     }
     checkCronStatus()
-    const statusInterval = setInterval(checkCronStatus, 15000)
+    const statusInterval = setInterval(checkCronStatus, 5000)
 
     return () => { clearInterval(cronInterval); clearInterval(statusInterval) }
   }, [])
